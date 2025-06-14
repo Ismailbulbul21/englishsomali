@@ -46,6 +46,7 @@ const SpeakingLearning = () => {
   const [chatMessages, setChatMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [onlineUsers, setOnlineUsers] = useState(1) // Start with just current user
+  const [connectionStatus, setConnectionStatus] = useState('connecting') // connecting, connected, disconnected
   
   // UI state
   const [showNewUserGuide, setShowNewUserGuide] = useState(false)
@@ -63,18 +64,38 @@ const SpeakingLearning = () => {
     checkIfNewUser()
     return () => {
       // Cleanup function to prevent memory leaks
+      console.log('Cleaning up SpeakingLearning component')
+      
       if (chatSubscriptionRef.current) {
-        chatSubscriptionRef.current.unsubscribe()
+        console.log('Unsubscribing from chat')
+        try {
+          chatSubscriptionRef.current.unsubscribe()
+          chatSubscriptionRef.current = null
+        } catch (e) {
+          console.warn('Error unsubscribing from chat:', e)
+        }
       }
+      
       if (timerRef.current) {
         clearInterval(timerRef.current)
+        timerRef.current = null
       }
+      
       if (mediaRecorderRef.current && isRecording) {
-        mediaRecorderRef.current.stop()
-        mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop())
+        try {
+          mediaRecorderRef.current.stop()
+          mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop())
+        } catch (e) {
+          console.warn('Error stopping media recorder:', e)
+        }
       }
+      
       if (recognitionRef.current) {
-        recognitionRef.current.stop()
+        try {
+          recognitionRef.current.stop()
+        } catch (e) {
+          console.warn('Error stopping speech recognition:', e)
+        }
       }
     }
   }, [categoryId, user])
@@ -89,6 +110,19 @@ const SpeakingLearning = () => {
     if (groupRoom) {
       loadChatMessages()
       setupChatSubscription()
+    }
+    
+    // Cleanup previous subscription when groupRoom changes
+    return () => {
+      if (chatSubscriptionRef.current) {
+        console.log('Cleaning up previous chat subscription')
+        try {
+          chatSubscriptionRef.current.unsubscribe()
+          chatSubscriptionRef.current = null
+        } catch (e) {
+          console.warn('Error cleaning up chat subscription:', e)
+        }
+      }
     }
   }, [groupRoom])
 
@@ -130,21 +164,31 @@ const SpeakingLearning = () => {
       // Load from localStorage first for instant display
       const cachedMessages = localStorage.getItem(`chat_${groupRoom.id}`)
       if (cachedMessages) {
-        const parsed = JSON.parse(cachedMessages)
-        setChatMessages(parsed)
+        try {
+          const parsed = JSON.parse(cachedMessages)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setChatMessages(parsed)
+          }
+        } catch (e) {
+          console.warn('Failed to parse cached messages:', e)
+          localStorage.removeItem(`chat_${groupRoom.id}`)
+        }
       }
 
       // Then load fresh data from server
       const { data: messages } = await getChatMessages(groupRoom.id)
-      const reversedMessages = messages?.reverse() || []
-      setChatMessages(reversedMessages)
-      
-      // Cache messages for persistence
-      localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(reversedMessages))
-      
-      // Update online users count based on recent activity
-      const activeCount = getActiveUsersCount(reversedMessages)
-      setOnlineUsers(activeCount)
+      if (messages && messages.length > 0) {
+        // Messages come in descending order, reverse to get chronological order
+        const chronologicalMessages = [...messages].reverse()
+        setChatMessages(chronologicalMessages)
+        
+        // Cache messages for persistence
+        localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(chronologicalMessages))
+        
+        // Update online users count based on recent activity
+        const activeCount = getActiveUsersCount(chronologicalMessages)
+        setOnlineUsers(activeCount)
+      }
     } catch (error) {
       console.error('Error loading chat messages:', error)
     }
@@ -153,17 +197,45 @@ const SpeakingLearning = () => {
   const setupChatSubscription = () => {
     if (!groupRoom || chatSubscriptionRef.current) return
     
+    console.log('Setting up chat subscription for room:', groupRoom.id)
+    setConnectionStatus('connecting')
+    
     chatSubscriptionRef.current = subscribeToChatMessages(groupRoom.id, (payload) => {
+      console.log('Received real-time message:', payload.new)
+      setConnectionStatus('connected')
+      
       setChatMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const messageExists = prev.some(msg => msg.id === payload.new.id)
+        if (messageExists) {
+          console.log('Message already exists, skipping duplicate')
+          return prev
+        }
+        
+        // Add new message to the end (chronological order)
         const newMessages = [...prev, payload.new]
+        
         // Cache updated messages
-        localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(newMessages))
+        try {
+          localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(newMessages))
+        } catch (e) {
+          console.warn('Failed to cache messages:', e)
+        }
+        
         // Update online count when new messages arrive
         const activeCount = getActiveUsersCount(newMessages)
         setOnlineUsers(activeCount)
+        
         return newMessages
       })
     })
+    
+    // Set connected status after a short delay if no errors
+    setTimeout(() => {
+      if (chatSubscriptionRef.current) {
+        setConnectionStatus('connected')
+      }
+    }, 1000)
   }
 
   const getActiveUsersCount = (messages) => {
@@ -439,12 +511,16 @@ const SpeakingLearning = () => {
     if (!newMessage.trim() || !groupRoom) return
 
     const messageText = newMessage.trim()
+    const tempId = `temp_${Date.now()}`
     const tempMessage = {
-      id: Date.now(),
+      id: tempId,
       message: messageText,
       user_profiles: { full_name: user.user_metadata?.full_name || 'You' },
       created_at: new Date().toISOString(),
-      user_id: user.id
+      user_id: user.id,
+      message_type: 'text',
+      metadata: {},
+      isTemporary: true
     }
 
     // Add message to local state immediately for better UX
@@ -452,13 +528,27 @@ const SpeakingLearning = () => {
     setNewMessage('')
 
     try {
-      await sendChatMessage(groupRoom.id, user.id, messageText)
+      console.log('Sending message to room:', groupRoom.id)
+      const { data, error } = await sendChatMessage(groupRoom.id, user.id, messageText)
+      
+      if (error) {
+        throw error
+      }
+      
+      console.log('Message sent successfully:', data)
+      
+      // Remove temporary message since real-time will add the actual one
+      setChatMessages(prev => prev.filter(msg => msg.id !== tempId))
+      
     } catch (error) {
       console.error('Error sending message:', error)
+      
       // Remove the temporary message if sending failed
-      setChatMessages(prev => prev.filter(msg => msg.id !== tempMessage.id))
+      setChatMessages(prev => prev.filter(msg => msg.id !== tempId))
       setNewMessage(messageText) // Restore the message text
-      alert('Failed to send message. Please try again.')
+      
+      // Show user-friendly error message
+      alert('Failed to send message. Please check your connection and try again.')
     }
   }
 
@@ -931,13 +1021,22 @@ const SpeakingLearning = () => {
                       {onlineUsers === 1 ? "You're online" : `${onlineUsers} recently active`}
                     </span>
                     <span className="sm:hidden">{onlineUsers}</span>
+                    {/* Connection status indicator */}
+                    <div className={`w-2 h-2 rounded-full ml-2 ${
+                      connectionStatus === 'connected' ? 'bg-green-500' : 
+                      connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                    }`} title={`Connection: ${connectionStatus}`}></div>
+                    {/* Debug info */}
+                    <span className="text-xs text-gray-400 ml-2">
+                      ({chatMessages.length} msgs)
+                    </span>
                   </div>
                 </div>
               </div>
               
               <div className="h-64 sm:h-80 lg:h-96 overflow-y-auto p-3 sm:p-4 space-y-3">
                 {chatMessages.map((message, idx) => (
-                  <div key={idx} className="flex space-x-2 sm:space-x-3">
+                  <div key={message.id || idx} className={`flex space-x-2 sm:space-x-3 ${message.isTemporary ? 'opacity-60' : ''}`}>
                     <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-medium flex-shrink-0">
                       {message.user_profiles?.full_name?.charAt(0) || 'U'}
                     </div>
@@ -949,11 +1048,28 @@ const SpeakingLearning = () => {
                         <span className="text-xs text-gray-500 flex-shrink-0">
                           {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
+                        {message.isTemporary && (
+                          <span className="text-xs text-gray-400">Sending...</span>
+                        )}
                       </div>
-                      <p className="text-xs sm:text-sm text-gray-700 break-words">{message.message}</p>
+                      <p className="text-xs sm:text-sm text-gray-700 break-words">
+                        {message.message}
+                        {message.message_type === 'progress_share' && (
+                          <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            Progress Update
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                 ))}
+                
+                {chatMessages.length === 0 && (
+                  <div className="text-center text-gray-500 py-8">
+                    <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No messages yet. Start the conversation!</p>
+                  </div>
+                )}
               </div>
               
               <div className="p-3 sm:p-4 border-t border-gray-200">

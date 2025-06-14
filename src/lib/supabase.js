@@ -515,7 +515,7 @@ export const getUserLevelProgress = async (userId, levelId) => {
 
 // Real-time subscriptions for chat
 export const subscribeToChatMessages = (roomId, callback) => {
-  return supabase
+  const channel = supabase
     .channel(`chat_room_${roomId}`)
     .on(
       'postgres_changes',
@@ -525,7 +525,34 @@ export const subscribeToChatMessages = (roomId, callback) => {
         table: 'chat_messages',
         filter: `room_id=eq.${roomId}`
       },
-      callback
+      async (payload) => {
+        // Fetch the complete message with user profile data
+        try {
+          const { data: messageWithProfile } = await supabase
+            .from('chat_messages')
+            .select(`
+              *,
+              user_profiles (full_name)
+            `)
+            .eq('id', payload.new.id)
+            .single()
+          
+          if (messageWithProfile) {
+            callback({ new: messageWithProfile })
+          } else {
+            // Fallback to original payload if profile fetch fails
+            callback(payload)
+          }
+        } catch (error) {
+          console.error('Error fetching message with profile:', error)
+          // Fallback to original payload
+          callback(payload)
+        }
+      }
     )
-    .subscribe()
+    .subscribe((status) => {
+      console.log('Subscription status:', status)
+    })
+  
+  return channel
 } 
