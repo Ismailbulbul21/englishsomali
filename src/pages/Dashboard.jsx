@@ -63,7 +63,7 @@ const Dashboard = () => {
     <div 
       className="min-h-screen relative"
       style={{
-        backgroundImage: `linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(147, 51, 234, 0.8)), url('https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
+        backgroundImage: `linear-gradient(135deg, rgba(16, 185, 129, 0.85), rgba(59, 130, 246, 0.85)), url('https://images.unsplash.com/photo-1481627834876-b7833e8f5570?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed'

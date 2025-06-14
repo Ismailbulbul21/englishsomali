@@ -3,7 +3,15 @@ import { Play, Users, Trophy, Globe } from 'lucide-react'
 
 const HomePage = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div 
+      className="min-h-screen relative"
+      style={{
+        backgroundImage: `linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(16, 185, 129, 0.9)), url('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      }}
+    >
       {/* Header */}
       <header className="container mx-auto px-4 py-6">
         <div className="flex justify-between items-center">
@@ -25,11 +33,11 @@ const HomePage = () => {
       {/* Hero Section */}
       <main className="container mx-auto px-4 py-12">
         <div className="text-center max-w-4xl mx-auto">
-          <h2 className="text-5xl font-bold text-gray-800 mb-6">
+          <h2 className="text-5xl font-bold text-white mb-6 drop-shadow-lg">
             Learn English Through 
-            <span className="text-blue-600"> Real Conversations</span>
+            <span className="text-yellow-300"> Real Conversations</span>
           </h2>
-          <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+          <p className="text-xl text-white/90 mb-8 leading-relaxed drop-shadow-md">
             Practice speaking English with AI-powered feedback designed specifically for Somali learners. 
             Build confidence for job interviews, school, travel, and daily life.
           </p>
@@ -53,23 +61,23 @@ const HomePage = () => {
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600 mb-2">5</div>
-              <div className="text-gray-600">Learning Paths</div>
+              <div className="text-3xl font-bold text-yellow-300 mb-2 drop-shadow-lg">5</div>
+              <div className="text-white/80 drop-shadow-md">Learning Paths</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600 mb-2">AI</div>
-              <div className="text-gray-600">Powered Feedback</div>
+              <div className="text-3xl font-bold text-yellow-300 mb-2 drop-shadow-lg">AI</div>
+              <div className="text-white/80 drop-shadow-md">Powered Feedback</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600 mb-2">24/7</div>
-              <div className="text-gray-600">Available Practice</div>
+              <div className="text-3xl font-bold text-yellow-300 mb-2 drop-shadow-lg">24/7</div>
+              <div className="text-white/80 drop-shadow-md">Available Practice</div>
             </div>
           </div>
         </div>
 
         {/* Features Section */}
         <section id="features" className="mb-16">
-          <h3 className="text-3xl font-bold text-center text-gray-800 mb-12">
+          <h3 className="text-3xl font-bold text-center text-white mb-12 drop-shadow-lg">
             Why Choose EnglishMaster?
           </h3>
           
@@ -118,7 +126,7 @@ const HomePage = () => {
 
         {/* Learning Paths Preview */}
         <section className="mb-16">
-          <h3 className="text-3xl font-bold text-center text-gray-800 mb-12">
+          <h3 className="text-3xl font-bold text-center text-white mb-12 drop-shadow-lg">
             Choose Your Learning Path
           </h3>
           

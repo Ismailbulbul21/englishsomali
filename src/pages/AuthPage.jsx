@@ -51,7 +51,15 @@ const AuthPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div 
+      className="min-h-screen relative flex items-center justify-center p-4"
+      style={{
+        backgroundImage: `linear-gradient(135deg, rgba(79, 70, 229, 0.9), rgba(59, 130, 246, 0.9)), url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      }}
+    >
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
@@ -59,12 +67,12 @@ const AuthPage = () => {
             <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-xl">E</span>
             </div>
-            <span className="text-2xl font-bold text-gray-800">EnglishMaster</span>
+            <span className="text-2xl font-bold text-white drop-shadow-lg">EnglishMaster</span>
           </Link>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          <h1 className="text-3xl font-bold text-white mb-2 drop-shadow-lg">
             {isLogin ? 'Welcome Back!' : 'Join EnglishMaster'}
           </h1>
-          <p className="text-gray-600">
+          <p className="text-white/90 drop-shadow-md">
             {isLogin 
               ? 'Continue your English learning journey' 
               : 'Start your English learning journey today'
@@ -196,7 +204,7 @@ const AuthPage = () => {
 
         {/* Back to Home */}
         <div className="text-center mt-6">
-          <Link to="/" className="text-gray-600 hover:text-gray-800 text-sm">
+          <Link to="/" className="text-white/80 hover:text-white text-sm drop-shadow-md">
             ← Back to Home
           </Link>
         </div>
