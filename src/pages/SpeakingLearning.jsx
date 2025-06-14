@@ -480,7 +480,7 @@ const SpeakingLearning = () => {
     <div 
       className="min-h-screen relative"
       style={{
-        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=2071&q=80')`,
+        backgroundImage: `linear-gradient(135deg, rgba(16, 185, 129, 0.8), rgba(59, 130, 246, 0.8)), url('https://images.unsplash.com/photo-1434030216411-0b793f4b4173?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed'
@@ -488,47 +488,49 @@ const SpeakingLearning = () => {
     >
       
       {/* Modern Header */}
-      <div className="bg-white/90 backdrop-blur-lg shadow-lg border-b border-white/30 sticky top-0 z-40 transition-all duration-300">
-        <div className="container mx-auto px-4 py-4">
+      <div className="bg-white/95 backdrop-blur-xl shadow-xl border-b border-white/30 sticky top-0 z-40">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            {/* Left Section */}
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
+                className="flex items-center space-x-1 sm:space-x-2 text-gray-600 hover:text-gray-800 transition-colors flex-shrink-0"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Dashboard</span>
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Dashboard</span>
               </button>
-              <div className="h-6 w-px bg-gray-300"></div>
-              <div className="flex items-center space-x-3">
-                <span className="text-3xl">{category.icon}</span>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-800">{category.name}</h1>
-                  <p className="text-sm text-gray-600">
-                    Level {currentLevel.level_number} • Question {questionIndex + 1}/{currentLevel.questions.length}
+              <div className="h-4 sm:h-6 w-px bg-gray-300 hidden sm:block"></div>
+              <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                <span className="text-xl sm:text-2xl lg:text-3xl flex-shrink-0">{category.icon}</span>
+                <div className="min-w-0">
+                  <h1 className="text-sm sm:text-lg lg:text-xl font-bold text-gray-800 truncate">{category.name}</h1>
+                  <p className="text-xs sm:text-sm text-gray-600 truncate">
+                    Level {currentLevel.level_number} • Q{questionIndex + 1}/{currentLevel.questions.length}
                   </p>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center space-x-4">
+            {/* Right Section */}
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               {/* Chat Toggle */}
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="relative flex items-center space-x-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg transition-colors"
+                className="relative flex items-center space-x-1 sm:space-x-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 sm:px-4 py-2 rounded-lg transition-colors"
               >
-                <MessageCircle className="w-5 h-5" />
-                <span>Chat</span>
+                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Chat</span>
                 <div className="flex items-center space-x-1 text-xs">
                   <Users className="w-3 h-3" />
-                  <span>Chat</span>
+                  <span className="hidden lg:inline">{onlineUsers}</span>
                 </div>
               </button>
               
               {/* Score Display */}
-              <div className="text-right">
-                <div className="text-sm text-gray-600">Current Score</div>
-                <div className="text-2xl font-bold text-blue-600">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs text-gray-600">Score</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">
                   {feedback?.overallScore || 0}%
                 </div>
               </div>
@@ -537,78 +539,78 @@ const SpeakingLearning = () => {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex gap-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
           {/* Main Content */}
-          <div className={`transition-all duration-300 ${showChat ? 'w-2/3' : 'w-full max-w-4xl mx-auto'}`}>
+          <div className={`transition-all duration-300 ${showChat ? 'lg:w-2/3' : 'w-full max-w-4xl mx-auto'}`}>
             {/* Progress Bar */}
-            <div className="mb-8">
+            <div className="mb-4 sm:mb-6 lg:mb-8">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-xs sm:text-sm font-medium text-white drop-shadow-lg">
                   Level {currentLevel.level_number} Progress
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className="text-xs sm:text-sm text-white/80 drop-shadow-lg">
                   {questionIndex + 1}/{currentLevel.questions.length}
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-white/30 rounded-full h-2 sm:h-3 backdrop-blur-sm">
                 <div
-                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500"
+                  className="bg-gradient-to-r from-green-400 to-blue-500 h-2 sm:h-3 rounded-full transition-all duration-500 shadow-lg"
                   style={{ width: `${((questionIndex + 1) / currentLevel.questions.length) * 100}%` }}
                 ></div>
               </div>
             </div>
 
             {/* Question Card */}
-            <div className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl p-8 mb-8 border border-white/30 transition-all duration-500 hover:shadow-3xl">
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-center space-x-4 mb-4">
-                  <h2 className="text-2xl font-bold text-gray-800">
+            <div className="bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 border border-white/30 transition-all duration-500 hover:shadow-3xl">
+              <div className="text-center mb-4 sm:mb-6">
+                <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mb-4">
+                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800">
                     Question {questionIndex + 1}
                   </h2>
                   <button
                     onClick={speakQuestion}
-                    className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
+                    className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-lg"
                   >
-                    <Volume2 className="w-5 h-5" />
+                    <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span className="text-sm">Listen</span>
                   </button>
                 </div>
-                <p className="text-xl text-gray-700 mb-4">{currentQuestion.text}</p>
-                <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
+                <p className="text-base sm:text-lg lg:text-xl text-gray-700 mb-4 leading-relaxed">{currentQuestion.text}</p>
+                <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-gray-500">
                   <div className="flex items-center space-x-1">
-                    <Clock className="w-4 h-4" />
+                    <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                     <span>Expected: {currentQuestion.expected_duration}s</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <Target className="w-4 h-4" />
+                    <Target className="w-3 h-3 sm:w-4 sm:h-4" />
                     <span>Minimum: {Math.min(60, currentQuestion?.expected_duration || 60)}s</span>
                   </div>
                 </div>
               </div>
 
               {/* Recording Section */}
-              <div className="text-center mb-6">
+              <div className="text-center mb-4 sm:mb-6">
                 <div className="relative inline-block mb-4">
                   <button
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isAnalyzing}
-                    className={`w-32 h-32 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all duration-300 transform ${
+                    className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform ${
                       isRecording
                         ? 'bg-red-500 hover:bg-red-600 scale-110 animate-pulse'
                         : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
                     } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} shadow-2xl`}
                   >
-                    {isRecording ? <MicOff className="w-12 h-12" /> : <Mic className="w-12 h-12" />}
+                    {isRecording ? <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12" /> : <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12" />}
                   </button>
                   
                   {isRecording && (
-                    <div className="absolute inset-0 rounded-full border-4 border-red-300 animate-ping"></div>
+                    <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-red-300 animate-ping"></div>
                   )}
                 </div>
                 
                 <div className="space-y-3">
-                  <p className="text-lg font-medium text-gray-700">
+                  <p className="text-sm sm:text-base lg:text-lg font-medium text-gray-700 px-2">
                     {isAutoSubmitting 
                       ? '🎯 Auto-submitting your answer...'
                       : isRecording 
@@ -617,7 +619,7 @@ const SpeakingLearning = () => {
                   </p>
                   
                   {recordingTime > 0 && (
-                    <div className="w-80 mx-auto">
+                    <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4">
                       <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
                         <span>0:00</span>
                         <span className={
@@ -687,43 +689,45 @@ const SpeakingLearning = () => {
 
               {/* Transcript */}
               {transcript && (
-                <div className="bg-gray-50 rounded-xl p-6 mb-6">
-                  <h3 className="font-semibold text-gray-800 mb-3">What you said:</h3>
+                <div className="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
+                  <h3 className="font-semibold text-gray-800 mb-3 text-sm sm:text-base">What you said:</h3>
                   <textarea
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full p-3 sm:p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                     rows="4"
                     placeholder="Edit your transcript if needed..."
                   />
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center space-x-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 space-y-3 sm:space-y-0">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                       {audioBlob && (
                         <button
                           onClick={playAudio}
-                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
+                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-lg"
                         >
-                          <Play className="w-4 h-4" />
-                          <span className="text-sm">Play Recording</span>
+                          <Play className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="text-xs sm:text-sm">Play Recording</span>
                         </button>
                       )}
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 max-w-xs sm:max-w-none">
                         💡 You can edit the text above if speech recognition made mistakes
                       </span>
                     </div>
-                    {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && (
-                      <button
-                        onClick={analyzeAnswer}
-                        className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg font-medium transition-colors animate-pulse"
-                      >
-                        ✓ Submit Answer ({formatTime(recordingTime)})
-                      </button>
-                    )}
-                    {isAutoSubmitting && (
-                      <div className="bg-blue-100 text-blue-700 px-6 py-2 rounded-lg font-medium animate-pulse">
-                        🎯 Auto-submitting in 2 seconds...
-                      </div>
-                    )}
+                    <div className="w-full sm:w-auto">
+                      {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && (
+                        <button
+                          onClick={analyzeAnswer}
+                          className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors animate-pulse text-sm sm:text-base"
+                        >
+                          ✓ Submit Answer ({formatTime(recordingTime)})
+                        </button>
+                      )}
+                      {isAutoSubmitting && (
+                        <div className="w-full sm:w-auto bg-blue-100 text-blue-700 px-4 sm:px-6 py-2 rounded-lg font-medium animate-pulse text-center text-sm sm:text-base">
+                          🎯 Auto-submitting in 2 seconds...
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -751,40 +755,40 @@ const SpeakingLearning = () => {
               {feedback && (
                 <div className="space-y-6">
                   {/* Score Overview */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className={`text-center p-4 rounded-xl ${feedback.passed ? 'bg-green-50' : 'bg-red-50'}`}>
-                      <div className={`text-3xl font-bold ${feedback.passed ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div className={`text-center p-3 sm:p-4 rounded-lg sm:rounded-xl ${feedback.passed ? 'bg-green-50' : 'bg-red-50'}`}>
+                      <div className={`text-xl sm:text-2xl lg:text-3xl font-bold ${feedback.passed ? 'text-green-600' : 'text-red-600'}`}>
                         {feedback.overallScore}%
                       </div>
-                      <div className={`text-sm ${feedback.passed ? 'text-green-700' : 'text-red-700'}`}>
+                      <div className={`text-xs sm:text-sm ${feedback.passed ? 'text-green-700' : 'text-red-700'}`}>
                         Overall {feedback.passed ? '✓' : '✗'}
                       </div>
                     </div>
-                    <div className="text-center p-4 bg-blue-50 rounded-xl">
-                      <div className="text-2xl font-bold text-blue-600">{feedback.grammarScore}%</div>
-                      <div className="text-sm text-blue-700">Grammar</div>
+                    <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
+                      <div className="text-xl sm:text-2xl font-bold text-blue-600">{feedback.grammarScore}%</div>
+                      <div className="text-xs sm:text-sm text-blue-700">Grammar</div>
                     </div>
-                    <div className="text-center p-4 bg-purple-50 rounded-xl">
-                      <div className="text-2xl font-bold text-purple-600">{feedback.pronunciationScore}%</div>
-                      <div className="text-sm text-purple-700">Pronunciation</div>
+                    <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl">
+                      <div className="text-xl sm:text-2xl font-bold text-purple-600">{feedback.pronunciationScore}%</div>
+                      <div className="text-xs sm:text-sm text-purple-700">Pronunciation</div>
                     </div>
-                    <div className="text-center p-4 bg-orange-50 rounded-xl">
-                      <div className="text-2xl font-bold text-orange-600">{feedback.fluencyScore}%</div>
-                      <div className="text-sm text-orange-700">Fluency</div>
+                    <div className="text-center p-3 sm:p-4 bg-orange-50 rounded-lg sm:rounded-xl">
+                      <div className="text-xl sm:text-2xl font-bold text-orange-600">{feedback.fluencyScore}%</div>
+                      <div className="text-xs sm:text-sm text-orange-700">Fluency</div>
                     </div>
                   </div>
 
                   {/* Somali Feedback */}
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-                      <h3 className="font-semibold text-blue-800 mb-3 text-lg">📝 Jawaab Faahfaahisan:</h3>
-                      <p className="text-blue-700 text-lg leading-relaxed">{feedback.feedback_somali}</p>
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg sm:rounded-xl p-4 sm:p-6">
+                      <h3 className="font-semibold text-blue-800 mb-3 text-base sm:text-lg">📝 Jawaab Faahfaahisan:</h3>
+                      <p className="text-blue-700 text-sm sm:text-base lg:text-lg leading-relaxed">{feedback.feedback_somali}</p>
                     </div>
                     
                     {feedback.encouragement_somali && (
-                      <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-                        <h3 className="font-semibold text-green-800 mb-3 text-lg">💪 Dhiirrigelin:</h3>
-                        <p className="text-green-700 text-lg font-medium leading-relaxed">{feedback.encouragement_somali}</p>
+                      <div className="bg-green-50 border border-green-200 rounded-lg sm:rounded-xl p-4 sm:p-6">
+                        <h3 className="font-semibold text-green-800 mb-3 text-base sm:text-lg">💪 Dhiirrigelin:</h3>
+                        <p className="text-green-700 text-sm sm:text-base lg:text-lg font-medium leading-relaxed">{feedback.encouragement_somali}</p>
                       </div>
                     )}
 
@@ -831,34 +835,34 @@ const SpeakingLearning = () => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex justify-center space-x-4 pt-4">
+                  <div className="flex flex-col sm:flex-row justify-center items-center space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
                     <button
                       onClick={retryQuestion}
-                      className="flex items-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl transition-colors"
+                      className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg sm:rounded-xl transition-colors"
                     >
-                      <RotateCcw className="w-5 h-5" />
+                      <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
                       <span>Try Again</span>
                     </button>
                     
                     {feedback.passed ? (
                       <button
                         onClick={nextQuestion}
-                        className="flex items-center space-x-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-colors"
+                        className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg sm:rounded-xl transition-colors"
                       >
-                        <ArrowRight className="w-5 h-5" />
+                        <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span>Next Question</span>
                       </button>
                     ) : (
-                      <div className="text-center">
-                        <p className="text-red-600 font-medium mb-2">
+                      <div className="text-center w-full sm:w-auto">
+                        <p className="text-red-600 font-medium mb-2 text-sm sm:text-base">
                           Score 60% or higher to proceed
                         </p>
                         {attempts.length >= 2 && (
                           <button
                             onClick={() => setShowHelp(true)}
-                            className="flex items-center space-x-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors"
+                            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg sm:rounded-xl transition-colors"
                           >
-                            <HelpCircle className="w-5 h-5" />
+                            <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                             <span>Show Example</span>
                           </button>
                         )}
@@ -915,43 +919,44 @@ const SpeakingLearning = () => {
 
           {/* Chat Sidebar */}
           {showChat && groupRoom && (
-            <div className="w-1/3 bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/30 h-fit sticky top-24 transition-all duration-500 animate-slide-in-right">
-              <div className="p-4 border-b border-gray-200">
+            <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl border border-white/30 h-fit lg:sticky lg:top-24 transition-all duration-500 mt-4 lg:mt-0`}>
+              <div className="p-3 sm:p-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800">
+                  <h3 className="font-semibold text-gray-800 text-sm sm:text-base">
                     {category?.name} Chat
                   </h3>
-                                      <div className="flex items-center space-x-1 text-sm text-gray-600">
-                      <Users className="w-4 h-4" />
-                      <span>
-                        {onlineUsers === 1 ? "You're online" : `${onlineUsers} recently active`}
-                      </span>
-                    </div>
+                  <div className="flex items-center space-x-1 text-xs sm:text-sm text-gray-600">
+                    <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">
+                      {onlineUsers === 1 ? "You're online" : `${onlineUsers} recently active`}
+                    </span>
+                    <span className="sm:hidden">{onlineUsers}</span>
+                  </div>
                 </div>
               </div>
               
-              <div className="h-96 overflow-y-auto p-4 space-y-3">
+              <div className="h-64 sm:h-80 lg:h-96 overflow-y-auto p-3 sm:p-4 space-y-3">
                 {chatMessages.map((message, idx) => (
-                  <div key={idx} className="flex space-x-3">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  <div key={idx} className="flex space-x-2 sm:space-x-3">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-medium flex-shrink-0">
                       {message.user_profiles?.full_name?.charAt(0) || 'U'}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-sm font-medium text-gray-800">
+                        <span className="text-xs sm:text-sm font-medium text-gray-800 truncate">
                           {message.user_profiles?.full_name || 'User'}
                         </span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(message.created_at).toLocaleTimeString()}
+                        <span className="text-xs text-gray-500 flex-shrink-0">
+                          {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-700">{message.message}</p>
+                      <p className="text-xs sm:text-sm text-gray-700 break-words">{message.message}</p>
                     </div>
                   </div>
                 ))}
               </div>
               
-              <div className="p-4 border-t border-gray-200">
+              <div className="p-3 sm:p-4 border-t border-gray-200">
                 <div className="flex space-x-2">
                   <input
                     type="text"
@@ -959,13 +964,13 @@ const SpeakingLearning = () => {
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                     placeholder="Type a message..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                   <button
                     onClick={sendMessage}
-                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                    className="px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex-shrink-0"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
                 </div>
               </div>
