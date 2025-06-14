@@ -1,29 +1,31 @@
-#!/usr/bin/env sh
+#!/bin/bash
 
-# abort on errors
-set -e
+echo "🚀 Starting deployment process..."
 
-# build
+# Clean previous build
+echo "🧹 Cleaning previous build..."
+rm -rf dist
+
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install
+
+# Build the project
+echo "🔨 Building the project..."
 npm run build
 
-# navigate into the build output directory
-cd dist
-
-# place .nojekyll to bypass Jekyll processing
-echo > .nojekyll
-
-# if you are deploying to a custom domain
-# echo 'www.example.com' > CNAME
-
-git init
-git checkout -B main
-git add -A
-git commit -m 'deploy'
-
-# if you are deploying to https://<USERNAME>.github.io
-# git push -f git@github.com:<USERNAME>/<USERNAME>.github.io.git main
-
-# if you are deploying to https://<USERNAME>.github.io/<REPO>
-git push -f git@github.com:Ismailbulbul21/englishsomali.git main:gh-pages
-
-cd - 
+# Check if build was successful
+if [ $? -eq 0 ]; then
+    echo "✅ Build successful!"
+    echo "📁 Build files are in the 'dist' directory"
+    echo "🌐 Ready for deployment to Vercel"
+    echo ""
+    echo "To deploy to Vercel:"
+    echo "1. Commit and push your changes to GitHub"
+    echo "2. Vercel will automatically deploy from the main branch"
+    echo ""
+    echo "Or deploy manually with: vercel --prod"
+else
+    echo "❌ Build failed!"
+    exit 1
+fi 
