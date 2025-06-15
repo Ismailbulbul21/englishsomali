@@ -436,7 +436,7 @@ const SpeakingLearning = () => {
           
           // Auto-submit at maximum time
           if (newTime >= maximumTime) {
-            stopRecording()
+            stopRecording(true)
             setTimeout(() => {
               setIsAutoSubmitting(true)
               analyzeAnswer()
@@ -473,7 +473,7 @@ const SpeakingLearning = () => {
                 setShowSilenceWarning(false)
                 
                 console.log('Auto-submitting due to silence...')
-                stopRecording()
+                stopRecording(true)
                 setTimeout(() => {
                   setIsAutoSubmitting(true)
                   analyzeAnswer()
@@ -498,14 +498,16 @@ const SpeakingLearning = () => {
     }
   }
 
-  const stopRecording = () => {
-    // Prevent stopping before minimum time
-    const levelConfig = getLevelConfig(currentLevel.level_number)
-    const minimumTime = levelConfig.minTime
-    
-    if (recordingTime < minimumTime) {
-      alert(`⚠️ Ma joojin kartid! Ugu yaraan ${minimumTime} ilbiriqsi ayaa loo baahan yahay. Hadda: ${recordingTime} ilbiriqsi. Sii hadal!`)
-      return // Don't stop recording
+  const stopRecording = (isAutoStop = false) => {
+    // Prevent stopping before minimum time (only for manual stops)
+    if (!isAutoStop) {
+      const levelConfig = getLevelConfig(currentLevel.level_number)
+      const minimumTime = levelConfig.minTime
+      
+      if (recordingTime < minimumTime) {
+        alert(`⚠️ Ma joojin kartid! Ugu yaraan ${minimumTime} ilbiriqsi ayaa loo baahan yahay. Hadda: ${recordingTime} ilbiriqsi. Sii hadal!`)
+        return // Don't stop recording
+      }
     }
 
     if (mediaRecorderRef.current && isRecording) {
@@ -536,11 +538,19 @@ const SpeakingLearning = () => {
     setShowSilenceWarning(false)
     setSilenceCountdown(0)
     
-    // Auto-submit when user manually stops after minimum time
-    setTimeout(() => {
-      setIsAutoSubmitting(true)
-      analyzeAnswer()
-    }, 1000)
+    // Set canSubmit to true if we've reached minimum time
+    const levelConfig = getLevelConfig(currentLevel.level_number)
+    if (recordingTime >= levelConfig.minTime) {
+      setCanSubmit(true)
+    }
+    
+    // Only auto-submit for manual stops after minimum time, not for max time auto-stops
+    if (!isAutoStop) {
+      setTimeout(() => {
+        setIsAutoSubmitting(true)
+        analyzeAnswer()
+      }, 1000)
+    }
   }
 
   const startNewRecording = () => {
@@ -919,7 +929,7 @@ const SpeakingLearning = () => {
                   ) : (
                     <div className="relative">
                       <button
-                        onClick={stopRecording}
+                        onClick={() => stopRecording()}
                         disabled={isAnalyzing || recordingTime < getLevelConfig(currentLevel.level_number).minTime}
                         className={`w-32 h-32 sm:w-36 sm:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-lg transition-all duration-300 transform scale-110 animate-pulse shadow-lg shadow-red-500/50 border-2 border-white/20 ${
                           recordingTime >= getLevelConfig(currentLevel.level_number).minTime 
@@ -1002,7 +1012,7 @@ const SpeakingLearning = () => {
               )}
 
               {/* Submit Button - Always visible when ready */}
-              {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && transcript && (
+              {!feedback && !isAnalyzing && !isAutoSubmitting && transcript && recordingTime >= getLevelConfig(currentLevel.level_number).minTime && (
                 <div className="mb-6">
                   <button
                     onClick={analyzeAnswer}
