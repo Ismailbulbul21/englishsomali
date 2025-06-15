@@ -343,32 +343,24 @@ const SpeakingLearning = () => {
       setIsRecording(true)
       setRecordingTime(0)
       
-      // Timer with dynamic requirements based on expected duration
+      // Simplified timer logic - 60 seconds minimum, 180 seconds auto-submit
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1
-          const expectedDuration = currentQuestion?.expected_duration || 60
-          const minimumTime = Math.min(60, expectedDuration) // At least 60s or expected time if less
+          const minimumTime = 60 // Simple 60 seconds for all questions
           
-          // Enable submit after reaching minimum time OR expected time
+          // Enable submit after 60 seconds
           if (newTime >= minimumTime) {
             setCanSubmit(true)
           }
           
-          // 🎯 Smart Auto-Submit: Stop and auto-submit when reaching expected time OR minimum time
-          if (newTime >= expectedDuration || (newTime >= minimumTime && newTime >= 60)) {
+          // Auto-submit at 180 seconds (3 minutes max)
+          if (newTime >= 180) {
             stopRecording()
-            // Auto-submit immediately when target reached
             setTimeout(() => {
               setIsAutoSubmitting(true)
               analyzeAnswer()
-            }, 1000) // Reduced delay
-            return newTime
-          }
-          
-          // Auto-stop at 180 seconds (3 minutes max) as fallback
-          if (newTime >= 180) {
-            stopRecording()
+            }, 1000)
             return 180
           }
           return newTime
@@ -399,26 +391,31 @@ const SpeakingLearning = () => {
   }
 
   const analyzeAnswer = async () => {
-    const expectedDuration = currentQuestion?.expected_duration || 60
-    const minimumTime = Math.min(60, expectedDuration)
+    const minimumTime = 60 // Simple 60 seconds for all questions
     
     if (!transcript.trim() || !currentQuestion || recordingTime < minimumTime) {
       alert(`Please record for at least ${minimumTime} seconds before submitting.`)
-      setIsAutoSubmitting(false) // Reset auto-submit state if validation fails
+      setIsAutoSubmitting(false)
       return
     }
 
     setIsAnalyzing(true)
     
     try {
+      // Progressive difficulty based on level
+      const levelConfig = getLevelConfig(currentLevel.level_number)
+      
       const analysis = await aiService.analyzeAnswer(
         currentQuestion.text,
         transcript,
         {
           category: category.name.toLowerCase(),
           level: currentLevel.level_number,
-          expectedLength: currentQuestion.expected_duration,
-          recordingTime: recordingTime
+          recordingTime: recordingTime,
+          // Progressive scoring configuration
+          passRate: levelConfig.passRate,
+          scoringWeights: levelConfig.weights,
+          difficultyLevel: levelConfig.difficulty
         }
       )
 
@@ -448,9 +445,9 @@ const SpeakingLearning = () => {
         await sendChatMessage(
           groupRoom.id,
           user.id,
-          `🎉 I just scored ${analysis.overallScore}% on "${currentQuestion.text}"!`,
+          `🎉 I just scored ${analysis.overallScore}% on Level ${currentLevel.level_number} Question ${questionIndex + 1}!`,
           'progress_share',
-          { score: analysis.overallScore, question: currentQuestion.text }
+          { score: analysis.overallScore, level: currentLevel.level_number, question: questionIndex + 1 }
         )
       }
 
@@ -467,13 +464,65 @@ const SpeakingLearning = () => {
       })
     } finally {
       setIsAnalyzing(false)
-      setIsAutoSubmitting(false) // Reset auto-submit state when analysis completes
+      setIsAutoSubmitting(false)
+    }
+  }
+
+  // Progressive difficulty configuration
+  const getLevelConfig = (levelNumber) => {
+    switch (levelNumber) {
+      case 1:
+        return {
+          passRate: 50,
+          difficulty: 'beginner',
+          weights: {
+            relevance: 30,
+            grammar: 15,
+            fluency: 25,
+            pronunciation: 30
+          }
+        }
+      case 2:
+        return {
+          passRate: 60,
+          difficulty: 'elementary',
+          weights: {
+            relevance: 35,
+            grammar: 20,
+            fluency: 25,
+            pronunciation: 20
+          }
+        }
+      case 3:
+        return {
+          passRate: 65,
+          difficulty: 'intermediate',
+          weights: {
+            relevance: 40,
+            grammar: 25,
+            fluency: 20,
+            pronunciation: 15
+          }
+        }
+      case 4:
+      default:
+        return {
+          passRate: 70,
+          difficulty: 'advanced',
+          weights: {
+            relevance: 40,
+            grammar: 25,
+            fluency: 20,
+            pronunciation: 15
+          }
+        }
     }
   }
 
   const nextQuestion = async () => {
+    const levelConfig = getLevelConfig(currentLevel.level_number)
     if (!feedback?.passed) {
-      alert('You need to score 70% or higher to proceed to the next question.')
+      alert(`You need to score ${levelConfig.passRate}% or higher to proceed to the next question.`)
       return
     }
 
@@ -676,11 +725,11 @@ const SpeakingLearning = () => {
                 <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-gray-500">
                   <div className="flex items-center space-x-1">
                     <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span>Expected: {currentQuestion.expected_duration}s</span>
+                    <span>Minimum: 60 seconds</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Target className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span>Minimum: {Math.min(60, currentQuestion?.expected_duration || 60)}s</span>
+                    <span>Level {currentLevel.level_number}: {getLevelConfig(currentLevel.level_number).passRate}% to pass</span>
                   </div>
                 </div>
               </div>
@@ -710,43 +759,30 @@ const SpeakingLearning = () => {
                     {isAutoSubmitting 
                       ? '🎯 Jawaabkaaga waan gudbinayaa...'
                       : isRecording 
-                      ? `Rikoordka... ${formatTime(recordingTime)}${recordingTime >= (currentQuestion?.expected_duration || 60) ? ' (Bartilmaameedka la gaaray! Si otomaatig ah ayaa loo gudbinayaa...)' : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60) ? ' (Ugu yaraan la gaaray, sii wad!)' : ''}` 
+                      ? `Rikoordka... ${formatTime(recordingTime)}` 
                       : 'Riinka rikoordka bilow'}
                   </p>
                   
                   {recordingTime > 0 && (
                     <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4">
-                      <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
-                        <span>0:00</span>
-                        <span className={
-                          recordingTime >= (currentQuestion?.expected_duration || 60) 
-                            ? 'text-green-600 font-medium' 
-                            : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60)
-                            ? 'text-blue-600 font-medium'
-                            : 'text-orange-600'
-                        }>
-                          {recordingTime >= (currentQuestion?.expected_duration || 60) 
-                            ? '🎯 Target reached!' 
-                            : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60)
-                            ? `${Math.max((currentQuestion?.expected_duration || 60) - recordingTime, 0)}s to target`
-                            : `${Math.max(Math.min(60, currentQuestion?.expected_duration || 60) - recordingTime, 0)}s to minimum`
-                          }
-                        </span>
-                        <span>3:00</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div
-                          className={`h-3 rounded-full transition-all duration-300 ${
-                            recordingTime >= (currentQuestion?.expected_duration || 60) 
-                              ? 'bg-green-500' 
-                              : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60)
-                              ? 'bg-blue-500'
-                              : 'bg-orange-500'
-                          }`}
-                          style={{ width: `${Math.min((recordingTime / 180) * 100, 100)}%` }}
-                        ></div>
-                      </div>
-                      {recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60) && isRecording && !isAutoSubmitting && (
+                                              <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                          <span>0:00</span>
+                          <span className={
+                            recordingTime >= 60 ? 'text-green-600 font-medium' : 'text-orange-600'
+                          }>
+                            {recordingTime >= 60 ? '🎯 Ready to submit!' : `${Math.max(60 - recordingTime, 0)}s to minimum`}
+                          </span>
+                          <span>3:00</span>
+                        </div>
+                                              <div className="w-full bg-gray-200 rounded-full h-3">
+                          <div
+                            className={`h-3 rounded-full transition-all duration-300 ${
+                              recordingTime >= 60 ? 'bg-green-500' : 'bg-orange-500'
+                            }`}
+                            style={{ width: `${Math.min((recordingTime / 180) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                      {recordingTime >= 60 && isRecording && !isAutoSubmitting && (
                         <div className="mt-2 text-center space-y-2">
                           <button
                             onClick={() => {
@@ -757,19 +793,14 @@ const SpeakingLearning = () => {
                               }, 500)
                             }}
                             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                              recordingTime >= (currentQuestion?.expected_duration || 60)
-                                ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse'
-                                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                              recordingTime >= 60 ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse' : 'bg-orange-500 hover:bg-orange-600 text-white'
                             }`}
                           >
-                            {recordingTime >= (currentQuestion?.expected_duration || 60)
-                              ? '🎯 Dhamaystir oo gudbi!'
-                              : 'Jooji oo gudbi'
-                            }
+                            {recordingTime >= 60 ? '🎯 Dhamaystir oo gudbi!' : 'Jooji oo gudbi'}
                           </button>
-                          {recordingTime < (currentQuestion?.expected_duration || 60) && (
+                          {recordingTime < 60 && (
                             <p className="text-xs text-gray-600">
-                              💡 Hadda waa hagaag, laakiin {currentQuestion?.expected_duration}s waa fiican
+                              💡 Hadda waa hagaag, laakiin 60s waa fiican
                             </p>
                           )}
                         </div>
@@ -885,18 +916,18 @@ const SpeakingLearning = () => {
                     <div className="flex items-start space-x-3">
                       <div className="text-2xl">
                         {feedback.passed ? '🎉' : '📝'}
-                      </div>
+                    </div>
                       <div className="flex-1">
                         <p className="text-blue-800 font-medium text-sm leading-relaxed">
                           {feedback.feedback_somali}
                         </p>
-                        {feedback.encouragement_somali && (
+                    {feedback.encouragement_somali && (
                           <p className="text-green-700 font-medium text-sm mt-2">
                             💪 {feedback.encouragement_somali}
                           </p>
                         )}
                       </div>
-                    </div>
+                      </div>
                   </div>
 
                   {/* Action Buttons - Compact */}
@@ -920,7 +951,7 @@ const SpeakingLearning = () => {
                     ) : (
                       <div className="text-center">
                         <p className="text-red-600 font-medium text-xs mb-2">
-                          70% loo baahan yahay
+                          {getLevelConfig(currentLevel.level_number).passRate}% loo baahan yahay
                         </p>
                         {attempts.length >= 2 && (
                           <button

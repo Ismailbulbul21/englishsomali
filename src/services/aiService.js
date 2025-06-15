@@ -566,28 +566,38 @@ class AIService {
       const cleanAnswer = userAnswer.trim().toLowerCase()
       const wordCount = cleanAnswer.split(/\s+/).length
       
-      // Calculate individual scores with much stricter criteria
-      const relevanceScore = this.calculateRelevanceScore(question, userAnswer)
-      const grammarScore = this.calculateGrammarScore(userAnswer)
-      const fluencyScore = this.calculateFluencyScore(userAnswer, wordCount)
+      // Get progressive difficulty configuration
+      const { passRate, scoringWeights, difficultyLevel } = context
+      const weights = scoringWeights || {
+        relevance: 40,
+        grammar: 25,
+        fluency: 20,
+        pronunciation: 15
+      }
+      
+      // Calculate individual scores with level-appropriate criteria
+      const relevanceScore = this.calculateRelevanceScore(question, userAnswer, difficultyLevel)
+      const grammarScore = this.calculateGrammarScore(userAnswer, difficultyLevel)
+      const fluencyScore = this.calculateFluencyScore(userAnswer, wordCount, difficultyLevel)
       const pronunciationScore = this.calculatePronunciationScore(userAnswer, context)
       
-      // Apply penalties for poor quality answers
-      const qualityPenalty = this.calculateQualityPenalty(userAnswer, question)
+      // Apply penalties for poor quality answers (adjusted by level)
+      const qualityPenalty = this.calculateQualityPenalty(userAnswer, question, difficultyLevel)
       
-      // Calculate overall score with stricter weighting
+      // Calculate overall score with level-specific weighting
       let overallScore = Math.round(
-        (relevanceScore * 0.4) +    // Relevance is most important
-        (grammarScore * 0.25) + 
-        (fluencyScore * 0.2) + 
-        (pronunciationScore * 0.15)
+        (relevanceScore * weights.relevance / 100) +
+        (grammarScore * weights.grammar / 100) + 
+        (fluencyScore * weights.fluency / 100) + 
+        (pronunciationScore * weights.pronunciation / 100)
       )
       
       // Apply quality penalty
       overallScore = Math.max(0, overallScore - qualityPenalty)
-      
-      // Determine if user passed (70% minimum for realistic standards)
-      const passed = overallScore >= 70
+
+      // Determine if user passed using level-specific pass rate
+      const requiredPassRate = passRate || 70
+      const passed = overallScore >= requiredPassRate
 
       // Generate more accurate Somali feedback
       const somaliFeedback = this.generateAccurateSomaliFeedback(overallScore, userAnswer, question, context)
@@ -618,35 +628,43 @@ class AIService {
     }
   }
 
-  // Calculate quality penalty for obviously poor answers
-  calculateQualityPenalty(userAnswer, question) {
+  // Calculate quality penalty for obviously poor answers (adjusted by level)
+  calculateQualityPenalty(userAnswer, question, difficultyLevel = 'advanced') {
     let penalty = 0
     const cleanAnswer = userAnswer.trim().toLowerCase()
+    
+    // Adjust penalty severity based on level
+    const levelMultiplier = {
+      'beginner': 0.5,    // More lenient for beginners
+      'elementary': 0.7,  // Slightly lenient
+      'intermediate': 0.9, // Almost full penalty
+      'advanced': 1.0     // Full penalty
+    }[difficultyLevel] || 1.0
     
     // Heavy penalty for repetitive nonsense
     const words = cleanAnswer.split(/\s+/)
     const uniqueWords = new Set(words)
     if (words.length > 5 && uniqueWords.size / words.length < 0.5) {
-      penalty += 30 // Too much repetition
+      penalty += 30 * levelMultiplier // Too much repetition
     }
     
     // Penalty for excessive "I don't know"
     const dontKnowCount = (cleanAnswer.match(/i don't know|i dunno|don't know/g) || []).length
     if (dontKnowCount > 1) {
-      penalty += dontKnowCount * 15
+      penalty += dontKnowCount * 15 * levelMultiplier
     }
     
     // Penalty for very short answers to complex questions
     if (words.length < 5 && question.length > 30) {
-      penalty += 25
+      penalty += 25 * levelMultiplier
     }
     
     // Penalty for incoherent rambling
     if (words.length > 20 && !this.hasCoherentStructure(cleanAnswer)) {
-      penalty += 20
+      penalty += 20 * levelMultiplier
     }
     
-    return Math.min(penalty, 50) // Cap penalty at 50 points
+    return Math.min(penalty, 50 * levelMultiplier) // Cap penalty based on level
   }
 
   // Check if answer has coherent structure
@@ -677,7 +695,7 @@ class AIService {
         return `⚠️ Su'aasha si fiican uga jawaab. Jawaabkaagu ma aha mid ku habboon su'aasha. Akhri su'aasha mar kale oo ka jawaab.`
       } else if (!hasGoodGrammar) {
         return `⚠️ Grammar-kaagu waa u baahan yahay hagaajin. Erayada si fiican u kala saar oo jumlado saxan samee.`
-      } else {
+    } else {
         return `⚠️ Waa bilowga fiican laakiin waxaad u baahan tahay dhaqan dheeraad ah. Ku celi mar kale.`
       }
     } else {
@@ -945,12 +963,22 @@ class AIService {
     return tips[Math.floor(Math.random() * tips.length)]
   }
 
-  // Helper methods for score calculation - Much stricter now
-  calculateGrammarScore(userAnswer) {
+  // Helper methods for score calculation - Progressive difficulty
+  calculateGrammarScore(userAnswer, difficultyLevel = 'advanced') {
     const answer = userAnswer.trim()
-    let score = 0 // Start from 0, not 70!
+    let score = 0 // Start from 0
     
-    // Basic requirements
+    // Level-specific base scores
+    const levelBonus = {
+      'beginner': 30,     // Give beginners a head start
+      'elementary': 20,   // Some help for elementary
+      'intermediate': 10, // Small boost for intermediate
+      'advanced': 0       // No bonus for advanced
+    }[difficultyLevel] || 0
+    
+    score += levelBonus
+    
+    // Basic requirements (adjusted by level)
     const hasCapitalization = /^[A-Z]/.test(answer)
     const hasPunctuation = /[.!?]$/.test(answer)
     const hasSubjectVerb = /\b(i|you|he|she|it|they|we)\s+(am|is|are|was|were|have|has|do|does|did|will|would|can|could)\b/i.test(answer)
@@ -959,32 +987,56 @@ class AIService {
     const sentences = answer.split(/[.!?]+/).filter(s => s.trim().length > 0)
     const hasCompleteSentences = sentences.length > 0 && sentences.every(s => s.trim().split(/\s+/).length >= 3)
     
-    // Grammar scoring
-    if (hasCapitalization) score += 20
-    if (hasPunctuation) score += 20
-    if (hasSubjectVerb) score += 25
-    if (hasCompleteSentences) score += 20
+    // Grammar scoring (more lenient for beginners)
+    const strictness = {
+      'beginner': 0.7,     // 70% of full points
+      'elementary': 0.8,   // 80% of full points
+      'intermediate': 0.9, // 90% of full points
+      'advanced': 1.0      // Full points
+    }[difficultyLevel] || 1.0
+    
+    if (hasCapitalization) score += 20 * strictness
+    if (hasPunctuation) score += 20 * strictness
+    if (hasSubjectVerb) score += 25 * strictness
+    if (hasCompleteSentences) score += 20 * strictness
     
     // Check for articles and proper word order
-    if (/\b(the|a|an)\b/i.test(answer)) score += 10
-    if (/\b(and|but|because|so|then)\b/i.test(answer)) score += 5
+    if (/\b(the|a|an)\b/i.test(answer)) score += 10 * strictness
+    if (/\b(and|but|because|so|then)\b/i.test(answer)) score += 5 * strictness
     
-    // Penalty for obvious grammar errors
-    if (/\b(me am|me is|me have)\b/i.test(answer)) score -= 15
-    if (/\b(i are|you is|they is)\b/i.test(answer)) score -= 20
+    // Penalty for obvious grammar errors (less harsh for beginners)
+    if (/\b(me am|me is|me have)\b/i.test(answer)) score -= 15 * strictness
+    if (/\b(i are|you is|they is)\b/i.test(answer)) score -= 20 * strictness
     
     return Math.min(100, Math.max(0, score))
   }
 
-  calculateFluencyScore(userAnswer, wordCount) {
+  calculateFluencyScore(userAnswer, wordCount, difficultyLevel = 'advanced') {
     let score = 0 // Start from 0
     
-    // Word count scoring - more realistic
-    if (wordCount >= 30) score += 30
-    else if (wordCount >= 20) score += 25
-    else if (wordCount >= 15) score += 20
-    else if (wordCount >= 10) score += 15
-    else if (wordCount >= 5) score += 10
+    // Level-specific base scores
+    const levelBonus = {
+      'beginner': 25,     // Give beginners a good start
+      'elementary': 15,   // Some help for elementary
+      'intermediate': 5,  // Small boost for intermediate
+      'advanced': 0       // No bonus for advanced
+    }[difficultyLevel] || 0
+    
+    score += levelBonus
+    
+    // Word count scoring - adjusted by level
+    const wordCountRequirements = {
+      'beginner': [10, 15, 20, 25, 30],      // Lower requirements
+      'elementary': [15, 20, 25, 30, 35],   // Moderate requirements
+      'intermediate': [20, 25, 30, 35, 40], // Higher requirements
+      'advanced': [25, 30, 35, 40, 45]      // Highest requirements
+    }[difficultyLevel] || [25, 30, 35, 40, 45]
+    
+    if (wordCount >= wordCountRequirements[4]) score += 30
+    else if (wordCount >= wordCountRequirements[3]) score += 25
+    else if (wordCount >= wordCountRequirements[2]) score += 20
+    else if (wordCount >= wordCountRequirements[1]) score += 15
+    else if (wordCount >= wordCountRequirements[0]) score += 10
     else score += 5 // Very short answers get minimal points
     
     // Sentence variety and flow
@@ -992,21 +1044,35 @@ class AIService {
     if (sentences.length > 2) score += 15
     else if (sentences.length > 1) score += 10
     
-    // Natural flow indicators
-    if (/\b(and|but|because|so|then|also|however|therefore|moreover)\b/i.test(userAnswer)) score += 15
-    if (/\b(I think|I believe|In my opinion|I feel|I would say)\b/i.test(userAnswer)) score += 10
-    if (/\b(first|second|finally|next|then|after that)\b/i.test(userAnswer)) score += 10
+    // Natural flow indicators (less strict for beginners)
+    const flowBonus = {
+      'beginner': 0.7,     // 70% of flow points
+      'elementary': 0.8,   // 80% of flow points
+      'intermediate': 0.9, // 90% of flow points
+      'advanced': 1.0      // Full flow points
+    }[difficultyLevel] || 1.0
     
-    // Penalty for excessive repetition
+    if (/\b(and|but|because|so|then|also|however|therefore|moreover)\b/i.test(userAnswer)) score += 15 * flowBonus
+    if (/\b(I think|I believe|In my opinion|I feel|I would say)\b/i.test(userAnswer)) score += 10 * flowBonus
+    if (/\b(first|second|finally|next|then|after that)\b/i.test(userAnswer)) score += 10 * flowBonus
+    
+    // Penalty for excessive repetition (less harsh for beginners)
     const words = userAnswer.toLowerCase().split(/\s+/)
     const uniqueWords = new Set(words)
     if (words.length > 10 && uniqueWords.size / words.length < 0.6) {
-      score -= 20 // Too repetitive
+      score -= 20 * flowBonus // Too repetitive
     }
     
-    // Penalty for excessive filler words
+    // Penalty for excessive filler words (more lenient for beginners)
     const fillerCount = (userAnswer.match(/\b(um|uh|like|you know|I mean)\b/gi) || []).length
-    if (fillerCount > 3) score -= fillerCount * 3
+    const fillerTolerance = {
+      'beginner': 5,       // Allow more fillers
+      'elementary': 4,     // Some tolerance
+      'intermediate': 3,   // Less tolerance
+      'advanced': 2        // Strict
+    }[difficultyLevel] || 2
+    
+    if (fillerCount > fillerTolerance) score -= (fillerCount - fillerTolerance) * 3
     
     return Math.min(100, Math.max(0, score))
   }
@@ -1054,19 +1120,36 @@ class AIService {
     return Math.min(100, Math.max(0, score))
   }
 
-  calculateRelevanceScore(question, userAnswer) {
+  calculateRelevanceScore(question, userAnswer, difficultyLevel = 'advanced') {
     let score = 0 // Start from 0 - must earn relevance points
     
     const questionLower = question.toLowerCase()
     const answerLower = userAnswer.toLowerCase()
+    
+    // Level-specific base scores for attempting to answer
+    const levelBonus = {
+      'beginner': 20,     // Give beginners credit for trying
+      'elementary': 15,   // Some help for elementary
+      'intermediate': 10, // Small boost for intermediate
+      'advanced': 0       // No bonus for advanced
+    }[difficultyLevel] || 0
+    
+    score += levelBonus
     
     // Direct relevance check using the helper method
     const isRelevant = this.checkRelevantContent(question, userAnswer)
     if (isRelevant) {
       score += 40 // Major points for being relevant
     } else {
-      // Heavy penalty for irrelevant answers
-      return Math.max(0, 20) // Max 20 points for irrelevant answers
+      // Less harsh penalty for beginners
+      const irrelevantPenalty = {
+        'beginner': 30,     // Still get some points for trying
+        'elementary': 25,   // Moderate penalty
+        'intermediate': 20, // Stricter penalty
+        'advanced': 15      // Harsh penalty
+      }[difficultyLevel] || 15
+      
+      return Math.max(0, irrelevantPenalty) // Max points for irrelevant answers
     }
     
     // Keyword matching (more sophisticated)
@@ -1083,21 +1166,36 @@ class AIService {
       score += (keywordMatches / questionKeywords.length) * 25
     }
     
-    // Answer completeness
+    // Answer completeness (adjusted by level)
     const wordCount = userAnswer.trim().split(/\s+/).length
-    if (wordCount >= 15) score += 20 // Substantial answer
-    else if (wordCount >= 10) score += 15
-    else if (wordCount >= 5) score += 10
-    else score += 5 // Very short answers
+    const wordCountRequirements = {
+      'beginner': [5, 8, 12, 18],        // Lower requirements
+      'elementary': [8, 12, 18, 25],     // Moderate requirements
+      'intermediate': [12, 18, 25, 35],  // Higher requirements
+      'advanced': [15, 20, 30, 40]       // Highest requirements
+    }[difficultyLevel] || [15, 20, 30, 40]
     
-    // Penalty for non-answers
+    if (wordCount >= wordCountRequirements[3]) score += 20 // Substantial answer
+    else if (wordCount >= wordCountRequirements[2]) score += 15
+    else if (wordCount >= wordCountRequirements[1]) score += 10
+    else if (wordCount >= wordCountRequirements[0]) score += 5
+    else score += 2 // Very short answers
+    
+    // Penalty for non-answers (more lenient for beginners)
     if (/\b(i don't know|don't know|no idea|not sure)\b/i.test(answerLower)) {
       const dontKnowCount = (answerLower.match(/\b(i don't know|don't know|no idea|not sure)\b/gi) || []).length
-      score -= dontKnowCount * 15 // Heavy penalty for "don't know"
+      const penaltyMultiplier = {
+        'beginner': 0.5,     // Half penalty for beginners
+        'elementary': 0.7,   // Reduced penalty
+        'intermediate': 0.9, // Almost full penalty
+        'advanced': 1.0      // Full penalty
+      }[difficultyLevel] || 1.0
+      
+      score -= dontKnowCount * 15 * penaltyMultiplier
     }
     
     // Bonus for specific, detailed answers
-    if (wordCount > 25 && isRelevant) score += 15
+    if (wordCount > wordCountRequirements[3] && isRelevant) score += 15
     
     return Math.min(100, Math.max(0, score))
   }
