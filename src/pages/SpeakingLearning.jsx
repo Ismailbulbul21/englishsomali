@@ -513,7 +513,7 @@ const SpeakingLearning = () => {
     
     // Clean up silence detection timers
     if (silenceTimerRef.current) {
-      clearInterval(silenceTimerRef.current) // Changed from clearTimeout to clearInterval
+      clearInterval(silenceTimerRef.current)
       silenceTimerRef.current = null
     }
     
@@ -531,8 +531,22 @@ const SpeakingLearning = () => {
     const minimumTime = levelConfig.minTime
     
     if (recordingTime < minimumTime) {
-      alert(`⚠️ Recording stopped early! You need at least ${minimumTime} seconds. Current: ${recordingTime} seconds. Please record again.`)
+      alert(`⚠️ Duubista waa la joojiyay! Ugu yaraan ${minimumTime} ilbiriqsi ayaa loo baahan yahay. Hadda: ${recordingTime} ilbiriqsi. Fadlan dib u duub.`)
     }
+  }
+
+  const startNewRecording = () => {
+    // Reset everything for a fresh start
+    setTranscript('')
+    setAudioBlob(null)
+    setRecordingTime(0)
+    setCanSubmit(false)
+    setLastSpeechTime(0)
+    setSilenceCountdown(0)
+    setShowSilenceWarning(false)
+    
+    // Start recording
+    startRecording()
   }
 
   const analyzeAnswer = async () => {
@@ -884,27 +898,25 @@ const SpeakingLearning = () => {
               {/* Recording Section */}
               <div className="text-center mb-4 sm:mb-6">
                 <div className="relative inline-block mb-4">
-                  <button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    disabled={isAnalyzing}
-                    className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform ${
-                      isRecording
-                        ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50'
-                        : 'bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50'
-                    } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
-                  >
-                    {isRecording ? (
-                      <>
-                        <MicOff className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
-                        <span className="text-xs sm:text-sm font-bold">STOP</span>
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
-                        <span className="text-xs sm:text-sm font-bold">START</span>
-                      </>
-                    )}
-                  </button>
+                  {!isRecording ? (
+                    <button
+                      onClick={transcript ? startNewRecording : startRecording}
+                      disabled={isAnalyzing}
+                      className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
+                    >
+                      <Mic className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
+                      <span className="text-xs sm:text-sm font-bold">{transcript ? 'CUSUB' : 'BILOW'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopRecording}
+                      disabled={isAnalyzing}
+                      className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
+                    >
+                      <MicOff className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
+                      <span className="text-xs sm:text-sm font-bold">JOOJI</span>
+                    </button>
+                  )}
                   
                   {isRecording && (
                     <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-cyan-400 animate-ping"></div>
@@ -914,22 +926,24 @@ const SpeakingLearning = () => {
                 <div className="space-y-3">
                   <p className="text-sm sm:text-base lg:text-lg font-medium text-cyan-100 px-2">
                     {isAutoSubmitting 
-                      ? '🎯 Submitting your answer...'
+                      ? '🎯 Jawaabka la gudbinayaa...'
                       : isRecording 
-                      ? `🎤 Recording... ${formatTime(recordingTime)} - Keep talking!` 
-                      : '🎯 Click START to begin recording'}
+                      ? `🎤 Duubista... ${formatTime(recordingTime)} - Sii hadal!` 
+                      : transcript 
+                      ? '🎯 CUSUB riix si aad duub cusub u bilowdo'
+                      : '🎯 BILOW riix si aad u bilowdo duubista'}
                   </p>
                   
                   {isRecording && (
                     <div className="text-center space-y-2">
                       <div className="flex items-center justify-center space-x-2">
                         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-cyan-300">RECORDING ACTIVE</span>
+                        <span className="text-sm font-medium text-cyan-300">DUUBISTA SOCOTA</span>
                         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
                       </div>
-                      <p className="text-xs text-cyan-400">
-                        💡 Speak clearly and naturally. Click STOP when finished.
-                      </p>
+                                              <p className="text-xs text-cyan-400">
+                          💡 Si cad oo dabiici ah u hadal. JOOJI riix markaad dhamaysato.
+                        </p>
                     </div>
                   )}
                   
@@ -948,7 +962,7 @@ const SpeakingLearning = () => {
                               <span className={
                                 recordingTime >= minTime ? 'text-green-600 font-medium' : 'text-orange-600'
                               }>
-                                {recordingTime >= minTime ? '🎯 Ready to submit!' : `${Math.max(minTime - recordingTime, 0)}s to minimum`}
+                                {recordingTime >= minTime ? '🎯 Diyaar u ah in la gudbiyo!' : `${Math.max(minTime - recordingTime, 0)}s ugu yaraan`}
                               </span>
                               <span>{Math.floor(maxTime/60)}:{(maxTime%60).toString().padStart(2,'0')}</span>
                             </div>
@@ -972,7 +986,7 @@ const SpeakingLearning = () => {
                             {showSilenceWarning && (
                               <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mb-2">
                                 <p className="text-yellow-800 font-medium text-sm">
-                                  ⚠️ Auto-submitting in {silenceCountdown} seconds due to silence...
+                                  ⚠️ {silenceCountdown} ilbiriqsi gudaha jawaabka la gudbinayaa...
                                 </p>
                                 <button
                                   onClick={() => {
@@ -986,7 +1000,7 @@ const SpeakingLearning = () => {
                                   }}
                                   className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs"
                                 >
-                                  Continue Speaking
+                                  Sii Hadal
                                 </button>
                               </div>
                             )}
@@ -1000,7 +1014,7 @@ const SpeakingLearning = () => {
                               }}
                               className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors animate-pulse"
                             >
-                              🎯 Dhamaystir oo gudbi!
+                              🎯 Jooji ama waad sii wadan kartaa!
                             </button>
                           </div>
                         )
@@ -1023,13 +1037,13 @@ const SpeakingLearning = () => {
               {/* Modern Transcript */}
               {transcript && (
                 <div className="bg-slate-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-cyan-500/30">
-                  <h3 className="font-semibold text-cyan-300 mb-3 text-sm sm:text-base">What you said:</h3>
+                  <h3 className="font-semibold text-cyan-300 mb-3 text-base">Waxaad tidhi:</h3>
                   <textarea
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
                     className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm sm:text-base text-cyan-100 placeholder-cyan-400"
                     rows="4"
-                    placeholder="Edit your transcript if needed..."
+                    placeholder="Haddii loo baahdo wax ka beddel..."
                   />
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 space-y-3 sm:space-y-0">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
@@ -1043,21 +1057,21 @@ const SpeakingLearning = () => {
                         </button>
                       )}
                       <span className="text-xs text-cyan-400 max-w-xs sm:max-w-none">
-                        💡 You can edit the text above if speech recognition made mistakes
+                        💡 Haddii codka aqoonsiga khalad sameeyo wax ka beddeli karto
                       </span>
                     </div>
-                    <div className="w-full sm:w-auto">
+                    <div className="w-full">
                       {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && (
                         <button
                           onClick={analyzeAnswer}
-                          className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors animate-pulse text-sm sm:text-base shadow-lg"
+                          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-3 rounded-lg font-bold transition-colors animate-pulse text-base shadow-lg"
                         >
-                          ✓ Jawaabka gudbi ({formatTime(recordingTime)})
+                          ✓ Jawaabka Gudbi ({formatTime(recordingTime)})
                         </button>
                       )}
                       {isAutoSubmitting && (
-                        <div className="w-full sm:w-auto bg-cyan-500/20 text-cyan-300 px-4 sm:px-6 py-2 rounded-lg font-medium animate-pulse text-center text-sm sm:text-base border border-cyan-500/30">
-                          🎯 Si otomaatig ah ayaa loo gudbinayaa...
+                        <div className="w-full bg-cyan-500/20 text-cyan-300 px-6 py-3 rounded-lg font-bold animate-pulse text-center text-base border border-cyan-500/30">
+                          🎯 Jawaabka la gudbinayaa...
                         </div>
                       )}
                     </div>
@@ -1073,8 +1087,8 @@ const SpeakingLearning = () => {
                     <div className="absolute inset-0 rounded-full h-16 w-16 border-4 border-purple-200 border-t-purple-600 mx-auto animate-spin" style={{animationDirection: 'reverse', animationDuration: '1.5s'}}></div>
                   </div>
                   <div className="space-y-3">
-                    <p className="text-lg font-semibold text-gray-700 animate-pulse">🤖 AI wuxuu falanqaynayaa jawaabkaaga...</p>
-                    <p className="text-sm text-gray-600 animate-fade-in-out">Analyzing your pronunciation, grammar, and fluency...</p>
+                    <p className="text-lg font-semibold text-cyan-100 animate-pulse">🤖 AI wuxuu falanqaynayaa jawaabkaaga...</p>
+                    <p className="text-sm text-cyan-300 animate-fade-in-out">Dhawaaqa, naxwaha, iyo fasaaxada waa la falanqaynayaa...</p>
                     <div className="flex justify-center space-x-1 mt-4">
                       <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
                       <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
