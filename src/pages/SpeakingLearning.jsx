@@ -135,9 +135,10 @@ const SpeakingLearning = () => {
     }
   }, [groupRoom])
 
-  // Auto-open chat when component loads
+  // Auto-open chat only on desktop
   useEffect(() => {
-    setShowChat(true)
+    const isDesktop = window.innerWidth >= 1024 // lg breakpoint
+    setShowChat(isDesktop)
   }, [])
 
   const loadCategoryAndLevels = async () => {
@@ -534,6 +535,12 @@ const SpeakingLearning = () => {
     setIsRecording(false)
     setShowSilenceWarning(false)
     setSilenceCountdown(0)
+    
+    // Auto-submit when user manually stops after minimum time
+    setTimeout(() => {
+      setIsAutoSubmitting(true)
+      analyzeAnswer()
+    }, 1000)
   }
 
   const startNewRecording = () => {
@@ -828,13 +835,13 @@ const SpeakingLearning = () => {
               {/* Chat Toggle */}
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="relative flex items-center space-x-1 sm:space-x-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 px-2 sm:px-4 py-2 rounded-lg transition-colors border border-cyan-500/30"
+                className="relative flex items-center space-x-1 sm:space-x-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 px-3 sm:px-4 py-2 rounded-lg transition-colors border border-cyan-500/30"
               >
-                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden sm:inline">Chat</span>
+                <MessageCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">Chat</span>
                 <div className="flex items-center space-x-1 text-xs">
                   <Users className="w-3 h-3" />
-                  <span className="hidden lg:inline">{onlineUsers}</span>
+                  <span>{onlineUsers}</span>
                 </div>
               </button>
               
@@ -897,208 +904,120 @@ const SpeakingLearning = () => {
               </div>
 
               {/* Recording Section */}
-              <div className="text-center mb-4 sm:mb-6">
-                <div className="relative inline-block mb-4">
+              <div className="text-center mb-6">
+                {/* Recording Button */}
+                <div className="relative inline-block mb-6">
                   {!isRecording ? (
                     <button
                       onClick={transcript ? startNewRecording : startRecording}
                       disabled={isAnalyzing}
-                      className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
+                      className={`w-32 h-32 sm:w-36 sm:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-lg transition-all duration-300 transform bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
                     >
-                      <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1" />
-                      <span className="text-sm sm:text-base font-bold">{transcript ? 'CUSUB' : 'BILOW'}</span>
+                      <Mic className="w-10 h-10 sm:w-12 sm:h-12 mb-2" />
+                      <span className="text-base font-bold">{transcript ? 'CUSUB' : 'BILOW'}</span>
                     </button>
                   ) : (
-                    <button
-                      onClick={stopRecording}
-                      disabled={isAnalyzing}
-                      className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
-                    >
-                      <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1" />
-                      <span className="text-sm sm:text-base font-bold">JOOJI</span>
-                    </button>
-                  )}
-                  
-                  {isRecording && (
-                    <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-cyan-400 animate-ping"></div>
+                    <div className="relative">
+                      <button
+                        onClick={stopRecording}
+                        disabled={isAnalyzing || recordingTime < getLevelConfig(currentLevel.level_number).minTime}
+                        className={`w-32 h-32 sm:w-36 sm:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-lg transition-all duration-300 transform scale-110 animate-pulse shadow-lg shadow-red-500/50 border-2 border-white/20 ${
+                          recordingTime >= getLevelConfig(currentLevel.level_number).minTime 
+                            ? 'bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 cursor-pointer' 
+                            : 'bg-gradient-to-br from-red-500 to-pink-600 cursor-not-allowed opacity-75'
+                        }`}
+                      >
+                        {recordingTime >= getLevelConfig(currentLevel.level_number).minTime ? (
+                          <>
+                            <CheckCircle className="w-10 h-10 sm:w-12 sm:h-12 mb-2" />
+                            <span className="text-base font-bold">JOOJI</span>
+                          </>
+                        ) : (
+                          <>
+                            <MicOff className="w-10 h-10 sm:w-12 sm:h-12 mb-2" />
+                            <span className="text-sm font-bold">{Math.max(getLevelConfig(currentLevel.level_number).minTime - recordingTime, 0)}s</span>
+                          </>
+                        )}
+                      </button>
+                      <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-cyan-400 animate-ping"></div>
+                    </div>
                   )}
                 </div>
                 
-                <div className="space-y-4">
-                  <p className="text-base sm:text-lg lg:text-xl font-medium text-cyan-100 px-2">
+                {/* Status Message */}
+                <div className="mb-6">
+                  <p className="text-lg sm:text-xl font-medium text-cyan-100 mb-2">
                     {isAutoSubmitting 
                       ? '🎯 Jawaabka la gudbinayaa...'
                       : isRecording 
-                      ? `🎤 Duubista... ${formatTime(recordingTime)} - Sii hadal!` 
+                      ? `🎤 ${formatTime(recordingTime)} - Sii hadal!` 
                       : transcript 
-                      ? '🎯 CUSUB riix si aad duub cusub u bilowdo'
-                      : '🎯 BILOW riix si aad u bilowdo duubista'}
+                      ? '✅ Diyaar! Jawaabka gudbi ama cusub bilow'
+                      : '🎯 BILOW riix si aad u bilowdo'}
                   </p>
                   
-                  {isRecording && (
-                    <div className="text-center space-y-3">
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
-                        <span className="text-sm sm:text-base font-medium text-cyan-300">DUUBISTA SOCOTA</span>
-                        <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
-                      </div>
-                      <p className="text-sm sm:text-base text-cyan-400 px-4">
-                        💡 Si cad oo dabiici ah u hadal. Ma joojin kartid ilaa aad gaadhid ugu yaraan {getLevelConfig(currentLevel.level_number).minTime} ilbiriqsi.
-                      </p>
-                    </div>
-                  )}
-                  
-                  {recordingTime > 0 && (
-                    <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-2 sm:px-4">
-                      {(() => {
-                        const levelConfig = getLevelConfig(currentLevel.level_number)
-                        const minTime = levelConfig.minTime
-                        const maxTime = levelConfig.maxTime
-                        const progress = (recordingTime / maxTime) * 100
-                        
-                        return (
-                          <>
-                            <div className="flex items-center justify-between text-xs sm:text-sm text-gray-300 mb-2">
-                              <span>0:00</span>
-                              <span className={`text-center px-2 py-1 rounded-lg font-medium ${
-                                recordingTime >= minTime ? 'text-green-300 bg-green-500/20' : 'text-orange-300 bg-orange-500/20'
-                              }`}>
-                                {recordingTime >= minTime ? '🎯 Diyaar!' : `${Math.max(minTime - recordingTime, 0)}s ugu yaraan`}
-                              </span>
-                              <span>{Math.floor(maxTime/60)}:{(maxTime%60).toString().padStart(2,'0')}</span>
-                            </div>
-                            <div className="w-full bg-slate-700/50 rounded-full h-4 mb-3 border border-cyan-500/30">
-                              <div
-                                className={`h-4 rounded-full transition-all duration-300 shadow-lg ${
-                                  recordingTime >= minTime ? 'bg-gradient-to-r from-green-400 to-green-500' : 'bg-gradient-to-r from-orange-400 to-orange-500'
-                                }`}
-                                style={{ width: `${Math.min(progress, 100)}%` }}
-                              ></div>
-                            </div>
-                          </>
-                        )
-                      })()}
-                      {(() => {
-                        const levelConfig = getLevelConfig(currentLevel.level_number)
-                        const minTime = levelConfig.minTime
-                        
-                        return recordingTime >= minTime && isRecording && !isAutoSubmitting && (
-                          <div className="mt-3 text-center space-y-3">
-                            {showSilenceWarning && (
-                              <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-3 mb-3">
-                                <p className="text-yellow-200 font-medium text-sm sm:text-base">
-                                  ⚠️ {silenceCountdown} ilbiriqsi gudaha jawaabka la gudbinayaa...
-                                </p>
-                                <button
-                                  onClick={() => {
-                                    setShowSilenceWarning(false)
-                                    setSilenceCountdown(0)
-                                    setLastSpeechTime(Date.now())
-                                    if (silenceCountdownRef.current) {
-                                      clearInterval(silenceCountdownRef.current)
-                                      silenceCountdownRef.current = null
-                                    }
-                                  }}
-                                  className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                                >
-                                  Sii Hadal
-                                </button>
-                              </div>
-                            )}
-                            <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-3">
-                              <p className="text-green-200 font-medium text-sm sm:text-base mb-2">
-                                ✅ Waqtigaaga ugu yaraan waa la gaaray! Hadda waad joojin kartaa.
-                              </p>
-                              <button
-                                onClick={() => {
-                                  stopRecording()
-                                  setTimeout(() => {
-                                    setIsAutoSubmitting(true)
-                                    analyzeAnswer()
-                                  }, 500)
-                                }}
-                                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-3 rounded-lg font-bold transition-colors text-base shadow-lg"
-                              >
-                                🎯 Jooji oo Gudbi
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })()}
-                      {isAutoSubmitting && (
-                        <div className="mt-4 text-center">
-                          <div className="bg-gradient-to-r from-blue-500/20 to-green-500/20 border border-blue-400/50 rounded-lg p-4">
-                            <div className="flex items-center justify-center space-x-3">
-                              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-300 border-t-blue-600"></div>
-                              <span className="text-blue-200 font-medium text-sm sm:text-base">🎯 Jawaabkaaga waan gudbinayaa...</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                  {isRecording && recordingTime < getLevelConfig(currentLevel.level_number).minTime && (
+                    <p className="text-orange-300 text-base">
+                      Ugu yaraan {getLevelConfig(currentLevel.level_number).minTime} ilbiriqsi loo baahan yahay
+                    </p>
                   )}
                 </div>
+
+                {/* Progress Bar - Only when recording */}
+                {isRecording && (
+                  <div className="w-full max-w-md mx-auto mb-6">
+                    {(() => {
+                      const levelConfig = getLevelConfig(currentLevel.level_number)
+                      const minTime = levelConfig.minTime
+                      const maxTime = levelConfig.maxTime
+                      const progress = (recordingTime / maxTime) * 100
+                      
+                      return (
+                        <div className="w-full bg-slate-700/50 rounded-full h-4 border border-cyan-500/30">
+                          <div
+                            className={`h-4 rounded-full transition-all duration-300 shadow-lg ${
+                              recordingTime >= minTime ? 'bg-gradient-to-r from-green-400 to-green-500' : 'bg-gradient-to-r from-orange-400 to-orange-500'
+                            }`}
+                            style={{ width: `${Math.min(progress, 100)}%` }}
+                          ></div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
 
-              {/* Modern Transcript - Always visible when there's content */}
-              {(transcript || (!isRecording && recordingTime > 0)) && (
-                <div className="bg-slate-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-cyan-500/30">
-                  <h3 className="font-semibold text-cyan-300 mb-3 text-base sm:text-lg">
-                    {transcript ? 'Waxaad tidhi:' : 'Duubista la dhammeeyay - Eeg qoraalka:'}
-                  </h3>
-                  
-                  {transcript ? (
-                    <textarea
-                      value={transcript}
-                      onChange={(e) => setTranscript(e.target.value)}
-                      className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm sm:text-base text-cyan-100 placeholder-cyan-400 min-h-[100px]"
-                      rows="4"
-                      placeholder="Haddii loo baahdo wax ka beddel..."
-                    />
-                  ) : (
-                    <div className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg min-h-[100px] flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-300 border-t-cyan-600 mx-auto mb-2"></div>
-                        <p className="text-cyan-300 text-sm">Qoraalka la soo sarayaa...</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="mt-4 space-y-3">
-                    {/* Audio playback button */}
-                    {audioBlob && (
-                      <div className="flex justify-center">
-                        <button
-                          onClick={playAudio}
-                          className="flex items-center space-x-2 text-purple-300 hover:text-purple-100 transition-colors bg-purple-500/20 hover:bg-purple-500/30 px-4 py-2 rounded-lg font-medium border border-purple-500/30"
-                        >
-                          <Volume2 className="w-4 h-4" />
-                          <span className="text-sm">🎧 Dhegayso Duubkaaga</span>
-                        </button>
-                      </div>
-                    )}
-                    
-                    {/* Help text */}
-                    <p className="text-xs sm:text-sm text-cyan-400 text-center px-2">
-                      💡 Haddii codka aqoonsiga khalad sameeyo wax ka beddeli karto
-                    </p>
-                    
-                    {/* Submit button - Always visible when conditions are met */}
-                    {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && transcript && (
-                      <button
-                        onClick={analyzeAnswer}
-                        className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-4 rounded-lg font-bold transition-colors text-base sm:text-lg shadow-lg animate-pulse"
-                      >
-                        ✓ Jawaabka Gudbi ({formatTime(recordingTime)})
-                      </button>
-                    )}
-                    
-                    {/* Auto-submitting state */}
-                    {isAutoSubmitting && (
-                      <div className="w-full bg-cyan-500/20 text-cyan-300 px-6 py-4 rounded-lg font-bold animate-pulse text-center text-base sm:text-lg border border-cyan-500/30">
-                        🎯 Jawaabka la gudbinayaa...
-                      </div>
-                    )}
+              {/* Transcript Section - Simplified */}
+              {transcript && (
+                <div className="bg-slate-800/50 rounded-xl p-4 sm:p-6 mb-6 border border-cyan-500/30">
+                  <h3 className="font-semibold text-cyan-300 mb-3 text-lg">Waxaad tidhi:</h3>
+                  <textarea
+                    value={transcript}
+                    onChange={(e) => setTranscript(e.target.value)}
+                    className="w-full p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-base text-cyan-100 placeholder-cyan-400 min-h-[120px]"
+                    rows="4"
+                    placeholder="Wax ka beddel haddii loo baahdo..."
+                  />
+                </div>
+              )}
+
+              {/* Submit Button - Always visible when ready */}
+              {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && transcript && (
+                <div className="mb-6">
+                  <button
+                    onClick={analyzeAnswer}
+                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-8 py-5 rounded-xl font-bold transition-colors text-xl shadow-lg animate-pulse"
+                  >
+                    ✓ Jawaabka Gudbi
+                  </button>
+                </div>
+              )}
+
+              {/* Auto-submitting state */}
+              {isAutoSubmitting && (
+                <div className="mb-6">
+                  <div className="w-full bg-cyan-500/20 text-cyan-300 px-8 py-5 rounded-xl font-bold animate-pulse text-center text-xl border border-cyan-500/30">
+                    🎯 Jawaabka la gudbinayaa...
                   </div>
                 </div>
               )}
