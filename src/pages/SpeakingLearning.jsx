@@ -467,7 +467,7 @@ const SpeakingLearning = () => {
 
   const nextQuestion = async () => {
     if (!feedback?.passed) {
-      alert('You need to score 60% or higher to proceed to the next question.')
+      alert('You need to score 70% or higher to proceed to the next question.')
       return
     }
 
@@ -945,7 +945,7 @@ const SpeakingLearning = () => {
                     ) : (
                       <div className="text-center w-full sm:w-auto">
                         <p className="text-red-600 font-medium mb-2 text-sm sm:text-base">
-                          Score 60% or higher to proceed
+                          Score 70% or higher to proceed
                         </p>
                         {attempts.length >= 2 && (
                           <button

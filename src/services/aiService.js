@@ -562,29 +562,38 @@ class AIService {
         return this.createSomaliNoAnswerResponse()
       }
 
-      // Calculate scores
-      const wordCount = userAnswer.trim().split(/\s+/).length
+      // Clean and normalize the answer
+      const cleanAnswer = userAnswer.trim().toLowerCase()
+      const wordCount = cleanAnswer.split(/\s+/).length
+      
+      // Calculate individual scores with much stricter criteria
+      const relevanceScore = this.calculateRelevanceScore(question, userAnswer)
       const grammarScore = this.calculateGrammarScore(userAnswer)
       const fluencyScore = this.calculateFluencyScore(userAnswer, wordCount)
       const pronunciationScore = this.calculatePronunciationScore(userAnswer, context)
-      const relevanceScore = this.calculateRelevanceScore(question, userAnswer)
       
-      // Calculate overall score
-      const overallScore = Math.round(
+      // Apply penalties for poor quality answers
+      const qualityPenalty = this.calculateQualityPenalty(userAnswer, question)
+      
+      // Calculate overall score with stricter weighting
+      let overallScore = Math.round(
+        (relevanceScore * 0.4) +    // Relevance is most important
         (grammarScore * 0.25) + 
-        (fluencyScore * 0.25) + 
-        (pronunciationScore * 0.25) + 
-        (relevanceScore * 0.25)
+        (fluencyScore * 0.2) + 
+        (pronunciationScore * 0.15)
       )
+      
+      // Apply quality penalty
+      overallScore = Math.max(0, overallScore - qualityPenalty)
+      
+      // Determine if user passed (70% minimum for realistic standards)
+      const passed = overallScore >= 70
 
-      // Determine if user passed (60% minimum)
-      const passed = overallScore >= 60
-
-      // Generate Somali feedback based on score
-      const somaliFeedback = this.generateSomaliFeedback(overallScore, userAnswer, context)
+      // Generate more accurate Somali feedback
+      const somaliFeedback = this.generateAccurateSomaliFeedback(overallScore, userAnswer, question, context)
       const encouragement = this.getSomaliEncouragement(overallScore)
-      const improvements = this.getSomaliImprovements(overallScore, userAnswer)
-      const strengths = this.getSomaliStrengths(overallScore, userAnswer)
+      const improvements = this.getSomaliImprovements(overallScore, userAnswer, relevanceScore, grammarScore)
+      const strengths = this.getSomaliStrengths(overallScore, userAnswer, relevanceScore, grammarScore)
 
       return {
         overallScore,
@@ -609,19 +618,144 @@ class AIService {
     }
   }
 
-  // Generate comprehensive Somali feedback
-  generateSomaliFeedback(score, userAnswer, context) {
-    const category = context.category || 'general'
+  // Calculate quality penalty for obviously poor answers
+  calculateQualityPenalty(userAnswer, question) {
+    let penalty = 0
+    const cleanAnswer = userAnswer.trim().toLowerCase()
     
-    if (score >= 80) {
-      return `🎉 Aad bay u fiican tahay! Codkaagu waa cad yahay, erayada waa saxan yihiin. Af-Ingiriiskaagu wuu horumarsan yahay. Sii wad sidaas oo kale!`
-    } else if (score >= 60) {
-      return `✅ Waa fiican! Waxaad gudbisay imtixaanka. Laakiin weli wax yar ayaad hagaajin kartaa. Ku sii wad dhaqanka si aad u noqoto mid aad u fiican.`
-    } else if (score >= 40) {
-      return `⚠️ Waa bilowga fiican laakiin waxaad u baahan tahay dhaqan dheeraad ah. Eeg tusaalaha hoose oo ku celi mar kale. Ha niyad jabin!`
-    } else {
-      return `❌ Waxaad u baahan tahay dhaqan badan. Dhegayso tusaalaha, ku celi, oo isku day mar kale. Qof walba wuu bartaa, adna waad awoodaa!`
+    // Heavy penalty for repetitive nonsense
+    const words = cleanAnswer.split(/\s+/)
+    const uniqueWords = new Set(words)
+    if (words.length > 5 && uniqueWords.size / words.length < 0.5) {
+      penalty += 30 // Too much repetition
     }
+    
+    // Penalty for excessive "I don't know"
+    const dontKnowCount = (cleanAnswer.match(/i don't know|i dunno|don't know/g) || []).length
+    if (dontKnowCount > 1) {
+      penalty += dontKnowCount * 15
+    }
+    
+    // Penalty for very short answers to complex questions
+    if (words.length < 5 && question.length > 30) {
+      penalty += 25
+    }
+    
+    // Penalty for incoherent rambling
+    if (words.length > 20 && !this.hasCoherentStructure(cleanAnswer)) {
+      penalty += 20
+    }
+    
+    return Math.min(penalty, 50) // Cap penalty at 50 points
+  }
+
+  // Check if answer has coherent structure
+  hasCoherentStructure(answer) {
+    // Look for basic sentence structure indicators
+    const hasProperSentences = /[.!?]/.test(answer)
+    const hasConnectors = /\b(and|but|because|so|then|also|however|therefore)\b/.test(answer)
+    const hasSubjectVerb = /\b(i|you|he|she|it|they|we)\s+(am|is|are|was|were|have|has|do|does|did|will|would|can|could)\b/.test(answer)
+    
+    return hasProperSentences || hasConnectors || hasSubjectVerb
+  }
+
+  // Generate more accurate Somali feedback
+  generateAccurateSomaliFeedback(score, userAnswer, question, context) {
+    const cleanAnswer = userAnswer.trim().toLowerCase()
+    
+    // Check for specific issues
+    const hasRelevantContent = this.checkRelevantContent(question, userAnswer)
+    const hasGoodGrammar = this.checkBasicGrammar(userAnswer)
+    const isCoherent = this.hasCoherentStructure(cleanAnswer)
+    
+    if (score >= 85 && hasRelevantContent && hasGoodGrammar) {
+      return `🎉 Aad bay u fiican tahay! Jawaabkaagu waa saxan yahay, erayada waa cad yihiin. Af-Ingiriiskaagu wuu horumarsan yahay. Sii wad sidaas oo kale!`
+    } else if (score >= 70 && hasRelevantContent) {
+      return `✅ Waa fiican! Jawaabkaagu waa ku habboon su'aasha. Laakiin wax yar ayaad hagaajin kartaa. Ku sii wad dhaqanka.`
+    } else if (score >= 50) {
+      if (!hasRelevantContent) {
+        return `⚠️ Su'aasha si fiican uga jawaab. Jawaabkaagu ma aha mid ku habboon su'aasha. Akhri su'aasha mar kale oo ka jawaab.`
+      } else if (!hasGoodGrammar) {
+        return `⚠️ Grammar-kaagu waa u baahan yahay hagaajin. Erayada si fiican u kala saar oo jumlado saxan samee.`
+      } else {
+        return `⚠️ Waa bilowga fiican laakiin waxaad u baahan tahay dhaqan dheeraad ah. Ku celi mar kale.`
+      }
+    } else {
+      return `❌ Jawaabkaagu ma aha mid fiican. Su'aasha akhri, ka feker, oo jawaab saxan bixii. Qof walba wuu bartaa, adna waad awoodaa!`
+    }
+  }
+
+  // Check if answer is relevant to the question
+  checkRelevantContent(question, userAnswer) {
+    const questionLower = question.toLowerCase()
+    const answerLower = userAnswer.toLowerCase()
+    
+    // Extract key question words
+    const questionKeywords = this.extractQuestionKeywords(questionLower)
+    
+    // Check if answer addresses the question type
+    if (questionLower.includes('tell me about yourself') || questionLower.includes('about yourself')) {
+      return answerLower.includes('my name') || answerLower.includes('i am') || answerLower.includes('i work') || answerLower.includes('i like')
+    }
+    
+    if (questionLower.includes('what is your name') || questionLower.includes('your name')) {
+      return answerLower.includes('my name') || answerLower.includes('i am') || answerLower.includes('call me')
+    }
+    
+    if (questionLower.includes('where are you from') || questionLower.includes('where do you live')) {
+      return answerLower.includes('from') || answerLower.includes('live in') || answerLower.includes('born in') || answerLower.includes('come from')
+    }
+    
+    if (questionLower.includes('what do you do') || questionLower.includes('your job') || questionLower.includes('work')) {
+      return answerLower.includes('work') || answerLower.includes('job') || answerLower.includes('student') || answerLower.includes('study')
+    }
+    
+    if (questionLower.includes('hobbies') || questionLower.includes('free time') || questionLower.includes('like to do')) {
+      return answerLower.includes('like') || answerLower.includes('enjoy') || answerLower.includes('hobby') || answerLower.includes('play') || answerLower.includes('watch')
+    }
+    
+    // For job interview questions
+    if (questionLower.includes('why do you want this job') || questionLower.includes('why should we hire')) {
+      return answerLower.includes('because') || answerLower.includes('experience') || answerLower.includes('skills') || answerLower.includes('good at')
+    }
+    
+    // Check for at least some keyword overlap
+    let relevantWords = 0
+    questionKeywords.forEach(keyword => {
+      if (answerLower.includes(keyword)) {
+        relevantWords++
+      }
+    })
+    
+    return relevantWords > 0 || answerLower.length > 20 // Give benefit of doubt for longer answers
+  }
+
+  // Extract key words from question
+  extractQuestionKeywords(question) {
+    const stopWords = ['what', 'how', 'why', 'where', 'when', 'who', 'is', 'are', 'do', 'does', 'can', 'will', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
+    return question.split(/\s+/).filter(word => 
+      word.length > 3 && !stopWords.includes(word) && /^[a-zA-Z]+$/.test(word)
+    )
+  }
+
+  // Check basic grammar patterns
+  checkBasicGrammar(userAnswer) {
+    const answer = userAnswer.trim()
+    
+    // Check for basic sentence structure
+    const hasCapitalization = /^[A-Z]/.test(answer)
+    const hasPunctuation = /[.!?]$/.test(answer)
+    const hasSubjectVerb = /\b(i|you|he|she|it|they|we)\s+(am|is|are|was|were|have|has|do|does|did|will|would|can|could)\b/i.test(answer)
+    const hasCompleteThoughts = answer.split(/[.!?]+/).filter(s => s.trim().length > 0).length > 0
+    
+    // Count grammar indicators
+    let grammarScore = 0
+    if (hasCapitalization) grammarScore += 25
+    if (hasPunctuation) grammarScore += 25
+    if (hasSubjectVerb) grammarScore += 30
+    if (hasCompleteThoughts) grammarScore += 20
+    
+    return grammarScore >= 50
   }
 
   // Somali encouragement based on score
@@ -638,46 +772,73 @@ class AIService {
   }
 
   // Somali improvements suggestions
-  getSomaliImprovements(score, userAnswer) {
+  getSomaliImprovements(score, userAnswer, relevanceScore, grammarScore) {
     const improvements = []
     
-    if (score < 60) {
+    // Specific feedback based on individual scores
+    if (relevanceScore < 50) {
+      improvements.push("Su'aasha si fiican uga jawaab - jawaabkaagu ma aha mid ku habboon")
+      improvements.push("Su'aasha akhri oo ka feker intaadan jawaabin")
+    }
+    
+    if (grammarScore < 50) {
+      improvements.push("Grammar-kaaga hagaaji - erayada si fiican u kala saar")
+      improvements.push("Jumlado dhamaystiran samee - bilow eray weyn oo ku dhammee calaamad")
+    }
+    
+    if (userAnswer.length < 30) {
+      improvements.push("Jawaab dheer oo faahfaahsan bixii")
+      improvements.push("Wax badan ka sheeg - hal eray kama filna")
+    }
+    
+    if (score < 70) {
       improvements.push("Si tartiib ah u hadal - degdeg ha u hadlin")
-      improvements.push("Erayada si cad u dheh - ha nuugin")
       improvements.push("Waqti qaado si aad u fiirsato waxa aad leedahay")
     }
     
-    if (userAnswer.length < 50) {
-      improvements.push("Jawaab dheer bixii - wax badan ka sheeg")
-    }
-    
-    if (score < 40) {
+    if (score < 50) {
       improvements.push("Tusaalaha dhegayso oo ku dayasho")
       improvements.push("Maalin walba dhaqan yar samee")
+      improvements.push("Cabsi ha qabin - qof walba wuu bartaa")
     }
 
-    return improvements
+    return improvements.length > 0 ? improvements : ["Ku sii wad dhaqanka - waa hagaag"]
   }
 
   // Somali strengths identification
-  getSomaliStrengths(score, userAnswer) {
+  getSomaliStrengths(score, userAnswer, relevanceScore, grammarScore) {
     const strengths = []
     
-    if (score >= 60) {
-      strengths.push("Codkaagu waa cad yahay")
-      strengths.push("Erayada qaar waa si fiican u dhehday")
+    // Specific strengths based on individual scores
+    if (relevanceScore >= 70) {
+      strengths.push("Su'aasha si fiican ayaad uga jawaabtay")
+      strengths.push("Jawaabkaagu waa ku habboon su'aasha")
     }
     
-    if (userAnswer.length > 100) {
-      strengths.push("Jawaab dheer baad bixisay - waa fiican")
-    }
-    
-    if (score >= 80) {
+    if (grammarScore >= 70) {
       strengths.push("Grammar-kaagu waa hagaagsan yahay")
+      strengths.push("Jumlado saxan baad samaysay")
+    }
+    
+    if (userAnswer.length > 50) {
+      strengths.push("Jawaab dheer oo faahfaahsan baad bixisay")
+    }
+    
+    if (score >= 85) {
+      strengths.push("Aad bay u fiican tahay!")
       strengths.push("Si dabiici ah ayaad u hadashay")
+      strengths.push("Codkaagu waa cad yahay")
+    } else if (score >= 70) {
+      strengths.push("Waa hagaag - sii wad")
+      strengths.push("Horumar fiican baad samaysay")
+    }
+    
+    // Check for good sentence structure
+    if (/^[A-Z].*[.!?]$/.test(userAnswer.trim())) {
+      strengths.push("Jumlado si fiican u bilowday oo u dhammaysay")
     }
 
-    return strengths.length > 0 ? strengths : ["Isku day fiican baad samaysay"]
+    return strengths.length > 0 ? strengths : ["Isku day fiican baad samaysay - sii wad"]
   }
 
   // No answer response in Somali
@@ -784,86 +945,159 @@ class AIService {
     return tips[Math.floor(Math.random() * tips.length)]
   }
 
-  // Helper methods for score calculation
+  // Helper methods for score calculation - Much stricter now
   calculateGrammarScore(userAnswer) {
-    // Simple grammar scoring based on sentence structure
-    const sentences = userAnswer.split(/[.!?]+/).filter(s => s.trim().length > 0)
-    let score = 70 // Base score
+    const answer = userAnswer.trim()
+    let score = 0 // Start from 0, not 70!
     
-    // Check for basic sentence structure
-    if (sentences.length > 0) {
-      sentences.forEach(sentence => {
-        const words = sentence.trim().split(/\s+/)
-        if (words.length >= 3) score += 5 // Complete sentences
-        if (/^[A-Z]/.test(sentence.trim())) score += 3 // Capitalization
-      })
-    }
+    // Basic requirements
+    const hasCapitalization = /^[A-Z]/.test(answer)
+    const hasPunctuation = /[.!?]$/.test(answer)
+    const hasSubjectVerb = /\b(i|you|he|she|it|they|we)\s+(am|is|are|was|were|have|has|do|does|did|will|would|can|could)\b/i.test(answer)
     
-    // Check for common grammar patterns
-    if (/\b(is|are|am|was|were)\b/i.test(userAnswer)) score += 5
-    if (/\b(the|a|an)\b/i.test(userAnswer)) score += 3
+    // Check for complete sentences
+    const sentences = answer.split(/[.!?]+/).filter(s => s.trim().length > 0)
+    const hasCompleteSentences = sentences.length > 0 && sentences.every(s => s.trim().split(/\s+/).length >= 3)
+    
+    // Grammar scoring
+    if (hasCapitalization) score += 20
+    if (hasPunctuation) score += 20
+    if (hasSubjectVerb) score += 25
+    if (hasCompleteSentences) score += 20
+    
+    // Check for articles and proper word order
+    if (/\b(the|a|an)\b/i.test(answer)) score += 10
+    if (/\b(and|but|because|so|then)\b/i.test(answer)) score += 5
+    
+    // Penalty for obvious grammar errors
+    if (/\b(me am|me is|me have)\b/i.test(answer)) score -= 15
+    if (/\b(i are|you is|they is)\b/i.test(answer)) score -= 20
     
     return Math.min(100, Math.max(0, score))
   }
 
   calculateFluencyScore(userAnswer, wordCount) {
-    let score = 50 // Base score
+    let score = 0 // Start from 0
     
-    // Word count scoring
-    if (wordCount >= 20) score += 20
-    else if (wordCount >= 10) score += 10
-    else if (wordCount >= 5) score += 5
+    // Word count scoring - more realistic
+    if (wordCount >= 30) score += 30
+    else if (wordCount >= 20) score += 25
+    else if (wordCount >= 15) score += 20
+    else if (wordCount >= 10) score += 15
+    else if (wordCount >= 5) score += 10
+    else score += 5 // Very short answers get minimal points
     
-    // Sentence variety
+    // Sentence variety and flow
     const sentences = userAnswer.split(/[.!?]+/).filter(s => s.trim().length > 0)
-    if (sentences.length > 1) score += 10
+    if (sentences.length > 2) score += 15
+    else if (sentences.length > 1) score += 10
     
     // Natural flow indicators
-    if (/\b(and|but|because|so|then|also)\b/i.test(userAnswer)) score += 10
-    if (/\b(I think|I believe|In my opinion)\b/i.test(userAnswer)) score += 5
+    if (/\b(and|but|because|so|then|also|however|therefore|moreover)\b/i.test(userAnswer)) score += 15
+    if (/\b(I think|I believe|In my opinion|I feel|I would say)\b/i.test(userAnswer)) score += 10
+    if (/\b(first|second|finally|next|then|after that)\b/i.test(userAnswer)) score += 10
+    
+    // Penalty for excessive repetition
+    const words = userAnswer.toLowerCase().split(/\s+/)
+    const uniqueWords = new Set(words)
+    if (words.length > 10 && uniqueWords.size / words.length < 0.6) {
+      score -= 20 // Too repetitive
+    }
+    
+    // Penalty for excessive filler words
+    const fillerCount = (userAnswer.match(/\b(um|uh|like|you know|I mean)\b/gi) || []).length
+    if (fillerCount > 3) score -= fillerCount * 3
     
     return Math.min(100, Math.max(0, score))
   }
 
   calculatePronunciationScore(userAnswer, context) {
     // Since we can't actually analyze audio pronunciation, 
-    // we'll estimate based on text complexity and context
-    let score = 60 // Base score
+    // we'll estimate based on text quality and recording behavior
+    let score = 0 // Start from 0
     
     const recordingTime = context.recordingTime || 0
+    const expectedDuration = context.expectedLength || 60
     
-    // Time-based scoring (good pacing)
-    if (recordingTime >= 60 && recordingTime <= 90) score += 15
-    else if (recordingTime >= 45) score += 10
-    else if (recordingTime >= 30) score += 5
+    // Time-based scoring (realistic pacing)
+    const timeDiff = Math.abs(recordingTime - expectedDuration)
+    if (timeDiff <= 10) score += 25 // Perfect timing
+    else if (timeDiff <= 20) score += 20 // Good timing
+    else if (timeDiff <= 30) score += 15 // Acceptable timing
+    else if (recordingTime >= 15) score += 10 // At least tried
+    else score += 5 // Very short recording
     
-    // Complexity bonus
+    // Text quality indicators (proxy for clear speech)
     const wordCount = userAnswer.trim().split(/\s+/).length
-    if (wordCount > 30) score += 10
-    else if (wordCount > 20) score += 5
+    const avgWordsPerSecond = recordingTime > 0 ? wordCount / recordingTime : 0
+    
+    // Good pacing (2-4 words per second is natural)
+    if (avgWordsPerSecond >= 2 && avgWordsPerSecond <= 4) score += 20
+    else if (avgWordsPerSecond >= 1.5 && avgWordsPerSecond <= 5) score += 15
+    else if (avgWordsPerSecond >= 1) score += 10
+    
+    // Complexity and clarity indicators
+    if (wordCount > 20) score += 15
+    else if (wordCount > 10) score += 10
+    else if (wordCount > 5) score += 5
+    
+    // Penalty for likely unclear speech patterns
+    if (/\b(uh|um|er|ah)\b/gi.test(userAnswer)) {
+      const fillerCount = (userAnswer.match(/\b(uh|um|er|ah)\b/gi) || []).length
+      score -= Math.min(fillerCount * 5, 20) // Max 20 point penalty
+    }
+    
+    // Bonus for clear articulation indicators
+    if (/[.!?]/.test(userAnswer)) score += 10 // Clear sentence endings
+    if (!/\b(I don't know){2,}\b/i.test(userAnswer)) score += 10 // Not just saying "I don't know"
     
     return Math.min(100, Math.max(0, score))
   }
 
   calculateRelevanceScore(question, userAnswer) {
-    let score = 50 // Base score
+    let score = 0 // Start from 0 - must earn relevance points
     
-    // Check if answer addresses the question
-    const questionWords = question.toLowerCase().split(/\s+/)
-    const answerWords = userAnswer.toLowerCase().split(/\s+/)
+    const questionLower = question.toLowerCase()
+    const answerLower = userAnswer.toLowerCase()
     
-    let relevantWords = 0
-    questionWords.forEach(qWord => {
-      if (qWord.length > 3 && answerWords.some(aWord => aWord.includes(qWord) || qWord.includes(aWord))) {
-        relevantWords++
+    // Direct relevance check using the helper method
+    const isRelevant = this.checkRelevantContent(question, userAnswer)
+    if (isRelevant) {
+      score += 40 // Major points for being relevant
+    } else {
+      // Heavy penalty for irrelevant answers
+      return Math.max(0, 20) // Max 20 points for irrelevant answers
+    }
+    
+    // Keyword matching (more sophisticated)
+    const questionKeywords = this.extractQuestionKeywords(questionLower)
+    let keywordMatches = 0
+    
+    questionKeywords.forEach(keyword => {
+      if (answerLower.includes(keyword)) {
+        keywordMatches++
       }
     })
     
-    score += (relevantWords / questionWords.length) * 30
+    if (questionKeywords.length > 0) {
+      score += (keywordMatches / questionKeywords.length) * 25
+    }
     
-    // Length appropriateness
-    if (userAnswer.length > 50) score += 10
-    if (userAnswer.length > 100) score += 10
+    // Answer completeness
+    const wordCount = userAnswer.trim().split(/\s+/).length
+    if (wordCount >= 15) score += 20 // Substantial answer
+    else if (wordCount >= 10) score += 15
+    else if (wordCount >= 5) score += 10
+    else score += 5 // Very short answers
+    
+    // Penalty for non-answers
+    if (/\b(i don't know|don't know|no idea|not sure)\b/i.test(answerLower)) {
+      const dontKnowCount = (answerLower.match(/\b(i don't know|don't know|no idea|not sure)\b/gi) || []).length
+      score -= dontKnowCount * 15 // Heavy penalty for "don't know"
+    }
+    
+    // Bonus for specific, detailed answers
+    if (wordCount > 25 && isRelevant) score += 15
     
     return Math.min(100, Math.max(0, score))
   }
