@@ -50,6 +50,8 @@ const SpeakingLearning = () => {
   
   // UI state
   const [showNewUserGuide, setShowNewUserGuide] = useState(false)
+  const [showResultPopup, setShowResultPopup] = useState(false)
+  const [resultData, setResultData] = useState(null)
   
   // Refs
   const mediaRecorderRef = useRef(null)
@@ -353,14 +355,14 @@ const SpeakingLearning = () => {
             setCanSubmit(true)
           }
           
-          // 🎯 Smart Target-Based Auto-Submit: Stop and auto-submit when reaching expected time
-          if (newTime >= expectedDuration) {
+          // 🎯 Smart Auto-Submit: Stop and auto-submit when reaching expected time OR minimum time
+          if (newTime >= expectedDuration || (newTime >= minimumTime && newTime >= 60)) {
             stopRecording()
-            // Auto-submit after 2 seconds delay
+            // Auto-submit immediately when target reached
             setTimeout(() => {
               setIsAutoSubmitting(true)
               analyzeAnswer()
-            }, 2000)
+            }, 1000) // Reduced delay
             return newTime
           }
           
@@ -421,6 +423,10 @@ const SpeakingLearning = () => {
       )
 
       setFeedback(analysis)
+      
+      // Show result popup
+      setResultData(analysis)
+      setShowResultPopup(true)
       
       // Save attempt to database
       const attemptData = {
@@ -702,10 +708,10 @@ const SpeakingLearning = () => {
                 <div className="space-y-3">
                   <p className="text-sm sm:text-base lg:text-lg font-medium text-gray-700 px-2">
                     {isAutoSubmitting 
-                      ? '🎯 Auto-submitting your answer...'
+                      ? '🎯 Jawaabkaaga waan gudbinayaa...'
                       : isRecording 
-                      ? `Recording... ${formatTime(recordingTime)}${recordingTime >= (currentQuestion?.expected_duration || 60) ? ' (Target reached! Auto-submitting soon...)' : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60) ? ' (Minimum reached, keep going to target!)' : ''}` 
-                      : 'Click to start recording'}
+                      ? `Rikoordka... ${formatTime(recordingTime)}${recordingTime >= (currentQuestion?.expected_duration || 60) ? ' (Bartilmaameedka la gaaray! Si otomaatig ah ayaa loo gudbinayaa...)' : recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60) ? ' (Ugu yaraan la gaaray, sii wad!)' : ''}` 
+                      : 'Riinka rikoordka bilow'}
                   </p>
                   
                   {recordingTime > 0 && (
@@ -743,7 +749,13 @@ const SpeakingLearning = () => {
                       {recordingTime >= Math.min(60, currentQuestion?.expected_duration || 60) && isRecording && !isAutoSubmitting && (
                         <div className="mt-2 text-center space-y-2">
                           <button
-                            onClick={stopRecording}
+                            onClick={() => {
+                              stopRecording()
+                              setTimeout(() => {
+                                setIsAutoSubmitting(true)
+                                analyzeAnswer()
+                              }, 500)
+                            }}
                             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                               recordingTime >= (currentQuestion?.expected_duration || 60)
                                 ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse'
@@ -751,13 +763,13 @@ const SpeakingLearning = () => {
                             }`}
                           >
                             {recordingTime >= (currentQuestion?.expected_duration || 60)
-                              ? '🎯 Perfect! Stop Recording'
-                              : 'Stop Recording (Can continue to target)'
+                              ? '🎯 Dhamaystir oo gudbi!'
+                              : 'Jooji oo gudbi'
                             }
                           </button>
                           {recordingTime < (currentQuestion?.expected_duration || 60) && (
                             <p className="text-xs text-gray-600">
-                              💡 You can stop now, but recording to {currentQuestion?.expected_duration}s is recommended
+                              💡 Hadda waa hagaag, laakiin {currentQuestion?.expected_duration}s waa fiican
                             </p>
                           )}
                         </div>
@@ -767,7 +779,7 @@ const SpeakingLearning = () => {
                           <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
                             <div className="flex items-center justify-center space-x-3">
                               <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-300 border-t-blue-600"></div>
-                              <span className="text-blue-700 font-medium">🎯 Target reached! Auto-submitting your answer...</span>
+                              <span className="text-blue-700 font-medium">🎯 Bartilmaameedka la gaaray! Jawaabkaaga waan gudbinayaa...</span>
                             </div>
                           </div>
                         </div>
@@ -809,12 +821,12 @@ const SpeakingLearning = () => {
                           onClick={analyzeAnswer}
                           className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors animate-pulse text-sm sm:text-base"
                         >
-                          ✓ Submit Answer ({formatTime(recordingTime)})
+                          ✓ Jawaabka gudbi ({formatTime(recordingTime)})
                         </button>
                       )}
                       {isAutoSubmitting && (
                         <div className="w-full sm:w-auto bg-blue-100 text-blue-700 px-4 sm:px-6 py-2 rounded-lg font-medium animate-pulse text-center text-sm sm:text-base">
-                          🎯 Auto-submitting in 2 seconds...
+                          🎯 Si otomaatig ah ayaa loo gudbinayaa...
                         </div>
                       )}
                     </div>
@@ -841,119 +853,82 @@ const SpeakingLearning = () => {
                 </div>
               )}
 
-              {/* Feedback */}
+              {/* Compact Feedback */}
               {feedback && (
-                <div className="space-y-6">
-                  {/* Score Overview */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                    <div className={`text-center p-3 sm:p-4 rounded-lg sm:rounded-xl ${feedback.passed ? 'bg-green-50' : 'bg-red-50'}`}>
-                      <div className={`text-xl sm:text-2xl lg:text-3xl font-bold ${feedback.passed ? 'text-green-600' : 'text-red-600'}`}>
+                <div className="space-y-4">
+                  {/* Score Overview - Compact */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className={`text-center p-3 rounded-lg ${feedback.passed ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                      <div className={`text-lg font-bold ${feedback.passed ? 'text-green-600' : 'text-red-600'}`}>
                         {feedback.overallScore}%
                       </div>
-                      <div className={`text-xs sm:text-sm ${feedback.passed ? 'text-green-700' : 'text-red-700'}`}>
-                        Overall {feedback.passed ? '✓' : '✗'}
+                      <div className={`text-xs ${feedback.passed ? 'text-green-700' : 'text-red-700'}`}>
+                        Overall
                       </div>
                     </div>
-                    <div className="text-center p-3 sm:p-4 bg-blue-50 rounded-lg sm:rounded-xl">
-                      <div className="text-xl sm:text-2xl font-bold text-blue-600">{feedback.grammarScore}%</div>
-                      <div className="text-xs sm:text-sm text-blue-700">Grammar</div>
+                    <div className="text-center p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-lg font-bold text-blue-600">{feedback.grammarScore}%</div>
+                      <div className="text-xs text-blue-700">Grammar</div>
                     </div>
-                    <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg sm:rounded-xl">
-                      <div className="text-xl sm:text-2xl font-bold text-purple-600">{feedback.pronunciationScore}%</div>
-                      <div className="text-xs sm:text-sm text-purple-700">Pronunciation</div>
+                    <div className="text-center p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                      <div className="text-lg font-bold text-purple-600">{feedback.pronunciationScore}%</div>
+                      <div className="text-xs text-purple-700">Speech</div>
                     </div>
-                    <div className="text-center p-3 sm:p-4 bg-orange-50 rounded-lg sm:rounded-xl">
-                      <div className="text-xl sm:text-2xl font-bold text-orange-600">{feedback.fluencyScore}%</div>
-                      <div className="text-xs sm:text-sm text-orange-700">Fluency</div>
+                    <div className="text-center p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="text-lg font-bold text-orange-600">{feedback.fluencyScore}%</div>
+                      <div className="text-xs text-orange-700">Fluency</div>
                     </div>
                   </div>
 
-                  {/* Somali Feedback */}
-                  <div className="space-y-3 sm:space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg sm:rounded-xl p-4 sm:p-6">
-                      <h3 className="font-semibold text-blue-800 mb-3 text-base sm:text-lg">📝 Jawaab Faahfaahisan:</h3>
-                      <p className="text-blue-700 text-sm sm:text-base lg:text-lg leading-relaxed">{feedback.feedback_somali}</p>
+                  {/* Main Feedback - Compact */}
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="text-2xl">
+                        {feedback.passed ? '🎉' : '📝'}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-blue-800 font-medium text-sm leading-relaxed">
+                          {feedback.feedback_somali}
+                        </p>
+                        {feedback.encouragement_somali && (
+                          <p className="text-green-700 font-medium text-sm mt-2">
+                            💪 {feedback.encouragement_somali}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    
-                    {feedback.encouragement_somali && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg sm:rounded-xl p-4 sm:p-6">
-                        <h3 className="font-semibold text-green-800 mb-3 text-base sm:text-lg">💪 Dhiirrigelin:</h3>
-                        <p className="text-green-700 text-sm sm:text-base lg:text-lg font-medium leading-relaxed">{feedback.encouragement_somali}</p>
-                      </div>
-                    )}
-
-                    {feedback.strengths_somali?.length > 0 && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
-                        <h3 className="font-semibold text-yellow-800 mb-3 text-lg flex items-center">
-                          <Trophy className="w-5 h-5 mr-2" />
-                          Waxa aad si fiican u samaysay:
-                        </h3>
-                        <ul className="space-y-2">
-                          {feedback.strengths_somali.map((strength, idx) => (
-                            <li key={idx} className="text-yellow-700 text-lg flex items-start">
-                              <Star className="w-4 h-4 mr-2 mt-1 flex-shrink-0" />
-                              {strength}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {feedback.improvements_somali?.length > 0 && (
-                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
-                        <h3 className="font-semibold text-orange-800 mb-3 text-lg flex items-center">
-                          <Target className="w-5 h-5 mr-2" />
-                          Meelaha loo baahan yahay horumar:
-                        </h3>
-                        <ul className="space-y-2">
-                          {feedback.improvements_somali.map((improvement, idx) => (
-                            <li key={idx} className="text-orange-700 text-lg flex items-start">
-                              <span className="w-4 h-4 mr-2 mt-1 flex-shrink-0">•</span>
-                              {improvement}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {feedback.pronunciation_tips && (
-                      <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
-                        <h3 className="font-semibold text-purple-800 mb-3 text-lg">🗣️ Talooyinka ku dhawaaqista:</h3>
-                        <p className="text-purple-700 text-lg leading-relaxed">{feedback.pronunciation_tips}</p>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row justify-center items-center space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
+                  {/* Action Buttons - Compact */}
+                  <div className="flex justify-center space-x-3">
                     <button
                       onClick={retryQuestion}
-                      className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg sm:rounded-xl transition-colors"
+                      className="flex items-center space-x-2 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                     >
-                      <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <span>Try Again</span>
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Ku celi</span>
                     </button>
                     
                     {feedback.passed ? (
                       <button
                         onClick={nextQuestion}
-                        className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg sm:rounded-xl transition-colors"
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm"
                       >
-                        <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Next Question</span>
+                        <ArrowRight className="w-4 h-4" />
+                        <span>Xigta</span>
                       </button>
                     ) : (
-                      <div className="text-center w-full sm:w-auto">
-                        <p className="text-red-600 font-medium mb-2 text-sm sm:text-base">
-                          Score 70% or higher to proceed
+                      <div className="text-center">
+                        <p className="text-red-600 font-medium text-xs mb-2">
+                          70% loo baahan yahay
                         </p>
                         {attempts.length >= 2 && (
                           <button
                             onClick={() => setShowHelp(true)}
-                            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg sm:rounded-xl transition-colors"
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors text-sm"
                           >
-                            <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                            <span>Show Example</span>
+                            <HelpCircle className="w-4 h-4" />
+                            <span>Tusaale</span>
                           </button>
                         )}
                       </div>
@@ -1094,6 +1069,91 @@ const SpeakingLearning = () => {
           )}
         </div>
       </div>
+
+      {/* Result Popup Modal */}
+      {showResultPopup && resultData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            {/* Header */}
+            <div className={`p-6 text-center ${resultData.passed ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-red-400 to-red-600'}`}>
+              <div className="text-6xl mb-3">
+                {resultData.passed ? '🎉' : '😔'}
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">
+                {resultData.passed ? 'Waad baastay!' : 'Waad dhacday'}
+              </h2>
+              <p className="text-white text-lg opacity-90">
+                {resultData.passed ? 'Shaqo fiican!' : 'Dib u isku day'}
+              </p>
+            </div>
+            
+            {/* Score */}
+            <div className="p-6 text-center">
+              <div className={`text-4xl font-bold mb-2 ${resultData.passed ? 'text-green-600' : 'text-red-600'}`}>
+                {resultData.overallScore}%
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-blue-600">{resultData.grammarScore}%</div>
+                  <div className="text-xs text-gray-600">Grammar</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-purple-600">{resultData.pronunciationScore}%</div>
+                  <div className="text-xs text-gray-600">Speech</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-orange-600">{resultData.fluencyScore}%</div>
+                  <div className="text-xs text-gray-600">Fluency</div>
+                </div>
+              </div>
+              
+              {/* Feedback */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-gray-800 text-sm leading-relaxed">
+                  {resultData.feedback_somali}
+                </p>
+                {resultData.encouragement_somali && (
+                  <p className="text-green-700 font-medium text-sm mt-2">
+                    💪 {resultData.encouragement_somali}
+                  </p>
+                )}
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowResultPopup(false)
+                    retryQuestion()
+                  }}
+                  className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  Ku celi
+                </button>
+                
+                {resultData.passed ? (
+                  <button
+                    onClick={() => {
+                      setShowResultPopup(false)
+                      nextQuestion()
+                    }}
+                    className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+                  >
+                    Xigta
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowResultPopup(false)}
+                    className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                  >
+                    OK
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New User Guide Modal */}
       {showNewUserGuide && (
