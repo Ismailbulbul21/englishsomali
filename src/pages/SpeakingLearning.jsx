@@ -33,6 +33,11 @@ const SpeakingLearning = () => {
   const [canSubmit, setCanSubmit] = useState(false)
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false)
   
+  // Silence detection state
+  const [lastSpeechTime, setLastSpeechTime] = useState(0)
+  const [silenceCountdown, setSilenceCountdown] = useState(0)
+  const [showSilenceWarning, setShowSilenceWarning] = useState(false)
+  
   // Feedback state
   const [feedback, setFeedback] = useState(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -59,6 +64,8 @@ const SpeakingLearning = () => {
   const timerRef = useRef(null)
   const audioChunksRef = useRef([])
   const chatSubscriptionRef = useRef(null)
+  const silenceTimerRef = useRef(null)
+  const silenceCountdownRef = useRef(null)
 
   useEffect(() => {
     loadCategoryAndLevels()
@@ -135,11 +142,21 @@ const SpeakingLearning = () => {
 
   const loadCategoryAndLevels = async () => {
     try {
-      const { data: categories } = await getCategories()
+      const { data: categories, error: categoriesError } = await getCategories()
+      if (categoriesError) {
+        console.error('Error loading categories:', categoriesError)
+        return
+      }
+      
       const foundCategory = categories?.find(cat => cat.id === categoryId)
       setCategory(foundCategory)
 
-      const { data: levelsData } = await getLevelsForCategory(categoryId)
+      const { data: levelsData, error: levelsError } = await getLevelsForCategory(categoryId)
+      if (levelsError) {
+        console.error('Error loading levels:', levelsError)
+        return
+      }
+      
       setLevels(levelsData || [])
       
       if (levelsData && levelsData.length > 0) {
@@ -178,7 +195,12 @@ const SpeakingLearning = () => {
       }
 
       // Then load fresh data from server
-      const { data: messages } = await getChatMessages(groupRoom.id)
+      const { data: messages, error } = await getChatMessages(groupRoom.id)
+      if (error) {
+        console.error('Error loading chat messages from server:', error)
+        return
+      }
+      
       if (messages && messages.length > 0) {
         // Messages come in descending order, reverse to get chronological order
         const chronologicalMessages = [...messages].reverse()
@@ -290,6 +312,22 @@ const SpeakingLearning = () => {
     setShowHelp(false)
     setExampleAnswer(null)
     setIsAutoSubmitting(false)
+    
+    // Reset silence detection
+    setLastSpeechTime(0)
+    setSilenceCountdown(0)
+    setShowSilenceWarning(false)
+    
+    // Clean up any running timers
+    if (silenceTimerRef.current) {
+      clearInterval(silenceTimerRef.current) // Changed from clearTimeout to clearInterval
+      silenceTimerRef.current = null
+    }
+    
+    if (silenceCountdownRef.current) {
+      clearInterval(silenceCountdownRef.current)
+      silenceCountdownRef.current = null
+    }
   }
 
   const checkIfNewUser = () => {
@@ -326,46 +364,132 @@ const SpeakingLearning = () => {
 
         recognitionRef.current.onresult = (event) => {
           let finalTranscript = ''
+          let interimTranscript = ''
+          let hasNewSpeech = false
+          
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               finalTranscript += event.results[i][0].transcript
+              hasNewSpeech = true
+            } else {
+              interimTranscript += event.results[i][0].transcript
             }
           }
+          
+          // Update transcript with final results
           if (finalTranscript) {
             setTranscript(prev => prev + ' ' + finalTranscript)
+          }
+          
+          // Update last speech time for ANY speech (final or interim)
+          if (hasNewSpeech || interimTranscript.trim().length > 0) {
+            console.log('Speech detected:', finalTranscript || interimTranscript)
+            setLastSpeechTime(Date.now())
+            setShowSilenceWarning(false)
+            setSilenceCountdown(0)
+            
+            // Clear any existing silence countdown
+            if (silenceCountdownRef.current) {
+              clearInterval(silenceCountdownRef.current)
+              silenceCountdownRef.current = null
+            }
+          }
+        }
+
+        recognitionRef.current.onerror = (event) => {
+          console.error('Speech recognition error:', event.error)
+        }
+
+        recognitionRef.current.onend = () => {
+          // Restart recognition if still recording
+          if (isRecording) {
+            try {
+              recognitionRef.current.start()
+            } catch (e) {
+              console.warn('Could not restart speech recognition:', e)
+            }
           }
         }
 
         recognitionRef.current.start()
+      } else {
+        alert('Speech recognition not supported in this browser. Please use Chrome or Edge.')
       }
 
       mediaRecorderRef.current.start()
       setIsRecording(true)
       setRecordingTime(0)
       
-      // Simplified timer logic - 60 seconds minimum, 180 seconds auto-submit
+      // Progressive timer logic based on level
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1
-          const minimumTime = 60 // Simple 60 seconds for all questions
+          const levelConfig = getLevelConfig(currentLevel.level_number)
+          const minimumTime = levelConfig.minTime
+          const maximumTime = levelConfig.maxTime
           
-          // Enable submit after 60 seconds
+          // Enable submit after minimum time
           if (newTime >= minimumTime) {
             setCanSubmit(true)
           }
           
-          // Auto-submit at 180 seconds (3 minutes max)
-          if (newTime >= 180) {
+          // Auto-submit at maximum time
+          if (newTime >= maximumTime) {
             stopRecording()
             setTimeout(() => {
               setIsAutoSubmitting(true)
               analyzeAnswer()
             }, 1000)
-            return 180
+            return maximumTime
           }
           return newTime
         })
       }, 1000)
+      
+      // Separate silence detection timer
+      const silenceCheckInterval = setInterval(() => {
+        const currentTime = Date.now()
+        const timeSinceLastSpeech = currentTime - lastSpeechTime
+        const silenceThreshold = 5000 // 5 seconds of silence
+        
+        // Only trigger silence detection if we have some recording time and reached minimum
+        if (recordingTime >= getLevelConfig(currentLevel.level_number).minTime && 
+            timeSinceLastSpeech > silenceThreshold && 
+            !showSilenceWarning && 
+            !silenceCountdownRef.current &&
+            isRecording) {
+          
+          console.log('Silence detected, starting countdown...')
+          setShowSilenceWarning(true)
+          setSilenceCountdown(3)
+          
+          silenceCountdownRef.current = setInterval(() => {
+            setSilenceCountdown(prev => {
+              if (prev <= 1) {
+                // Auto-submit due to silence
+                clearInterval(silenceCountdownRef.current)
+                silenceCountdownRef.current = null
+                setShowSilenceWarning(false)
+                
+                console.log('Auto-submitting due to silence...')
+                stopRecording()
+                setTimeout(() => {
+                  setIsAutoSubmitting(true)
+                  analyzeAnswer()
+                }, 500)
+                return 0
+              }
+              return prev - 1
+            })
+          }, 1000)
+        }
+      }, 1000)
+      
+      // Store silence check interval for cleanup
+      silenceTimerRef.current = silenceCheckInterval
+      
+      // Initialize speech tracking
+      setLastSpeechTime(Date.now())
 
     } catch (error) {
       console.error('Error starting recording:', error)
@@ -387,11 +511,33 @@ const SpeakingLearning = () => {
       clearInterval(timerRef.current)
     }
     
+    // Clean up silence detection timers
+    if (silenceTimerRef.current) {
+      clearInterval(silenceTimerRef.current) // Changed from clearTimeout to clearInterval
+      silenceTimerRef.current = null
+    }
+    
+    if (silenceCountdownRef.current) {
+      clearInterval(silenceCountdownRef.current)
+      silenceCountdownRef.current = null
+    }
+    
     setIsRecording(false)
+    setShowSilenceWarning(false)
+    setSilenceCountdown(0)
+    
+    // Check if stopped before minimum time
+    const levelConfig = getLevelConfig(currentLevel.level_number)
+    const minimumTime = levelConfig.minTime
+    
+    if (recordingTime < minimumTime) {
+      alert(`⚠️ Recording stopped early! You need at least ${minimumTime} seconds. Current: ${recordingTime} seconds. Please record again.`)
+    }
   }
 
   const analyzeAnswer = async () => {
-    const minimumTime = 60 // Simple 60 seconds for all questions
+    const levelConfig = getLevelConfig(currentLevel.level_number)
+    const minimumTime = levelConfig.minTime
     
     if (!transcript.trim() || !currentQuestion || recordingTime < minimumTime) {
       alert(`Please record for at least ${minimumTime} seconds before submitting.`)
@@ -440,16 +586,7 @@ const SpeakingLearning = () => {
 
       await saveUserAttempt(attemptData)
       
-      // Share progress in chat if passed
-      if (analysis.passed && groupRoom) {
-        await sendChatMessage(
-          groupRoom.id,
-          user.id,
-          `🎉 I just scored ${analysis.overallScore}% on Level ${currentLevel.level_number} Question ${questionIndex + 1}!`,
-          'progress_share',
-          { score: analysis.overallScore, level: currentLevel.level_number, question: questionIndex + 1 }
-        )
-      }
+      // Auto progress sharing removed for cleaner chat experience
 
     } catch (error) {
       console.error('Error analyzing answer:', error)
@@ -475,6 +612,8 @@ const SpeakingLearning = () => {
         return {
           passRate: 50,
           difficulty: 'beginner',
+          minTime: 30,
+          maxTime: 60,
           weights: {
             relevance: 30,
             grammar: 15,
@@ -486,6 +625,8 @@ const SpeakingLearning = () => {
         return {
           passRate: 60,
           difficulty: 'elementary',
+          minTime: 45,
+          maxTime: 75,
           weights: {
             relevance: 35,
             grammar: 20,
@@ -497,6 +638,8 @@ const SpeakingLearning = () => {
         return {
           passRate: 65,
           difficulty: 'intermediate',
+          minTime: 60,
+          maxTime: 90,
           weights: {
             relevance: 40,
             grammar: 25,
@@ -509,6 +652,8 @@ const SpeakingLearning = () => {
         return {
           passRate: 70,
           difficulty: 'advanced',
+          minTime: 60,
+          maxTime: 90,
           weights: {
             relevance: 40,
             grammar: 25,
@@ -616,7 +761,13 @@ const SpeakingLearning = () => {
   if (!category || !currentLevel || !currentQuestion) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading learning content...</p>
+          <p className="text-sm text-gray-500 mt-2">Category ID: {categoryId}</p>
+          {category && <p className="text-sm text-gray-500">Category: {category.name}</p>}
+          {currentLevel && <p className="text-sm text-gray-500">Level: {currentLevel.level_number}</p>}
+        </div>
       </div>
     )
   }
@@ -625,33 +776,33 @@ const SpeakingLearning = () => {
     <div 
       className="min-h-screen relative"
       style={{
-        backgroundImage: `linear-gradient(135deg, rgba(99, 102, 241, 0.85), rgba(168, 85, 247, 0.85)), url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
+        backgroundImage: `linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.90), rgba(51, 65, 85, 0.85)), url('https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&auto=format&fit=crop&w=2125&q=80')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed'
       }}
     >
       
-      {/* Modern Header */}
-      <div className="bg-white/95 backdrop-blur-xl shadow-xl border-b border-white/30 sticky top-0 z-40">
+      {/* Futuristic Header */}
+      <div className="bg-slate-900/95 backdrop-blur-xl shadow-2xl border-b border-cyan-500/30 sticky top-0 z-40">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             {/* Left Section */}
             <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center space-x-1 sm:space-x-2 text-gray-600 hover:text-gray-800 transition-colors flex-shrink-0"
+                className="flex items-center space-x-1 sm:space-x-2 text-cyan-400 hover:text-cyan-300 transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Dashboard</span>
               </button>
-              <div className="h-4 sm:h-6 w-px bg-gray-300 hidden sm:block"></div>
+              <div className="h-4 sm:h-6 w-px bg-cyan-500/50 hidden sm:block"></div>
               <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
                 <span className="text-xl sm:text-2xl lg:text-3xl flex-shrink-0">{category.icon}</span>
                 <div className="min-w-0">
-                  <h1 className="text-sm sm:text-lg lg:text-xl font-bold text-gray-800 truncate">{category.name}</h1>
-                  <p className="text-xs sm:text-sm text-gray-600 truncate">
-                    Level {currentLevel.level_number} • Q{questionIndex + 1}/{currentLevel.questions.length}
+                  <h1 className="text-sm sm:text-lg lg:text-xl font-bold text-white truncate">{category.name}</h1>
+                  <p className="text-xs sm:text-sm text-cyan-300 truncate">
+                    Level {currentLevel.level_number} • Question {questionIndex + 1}/{currentLevel.questions.length}
                   </p>
                 </div>
               </div>
@@ -662,7 +813,7 @@ const SpeakingLearning = () => {
               {/* Chat Toggle */}
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="relative flex items-center space-x-1 sm:space-x-2 bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 sm:px-4 py-2 rounded-lg transition-colors"
+                className="relative flex items-center space-x-1 sm:space-x-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 px-2 sm:px-4 py-2 rounded-lg transition-colors border border-cyan-500/30"
               >
                 <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden sm:inline">Chat</span>
@@ -674,8 +825,8 @@ const SpeakingLearning = () => {
               
               {/* Score Display */}
               <div className="text-right hidden sm:block">
-                <div className="text-xs text-gray-600">Score</div>
-                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">
+                <div className="text-xs text-cyan-400">Score</div>
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-white">
                   {feedback?.overallScore || 0}%
                 </div>
               </div>
@@ -688,48 +839,44 @@ const SpeakingLearning = () => {
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
           {/* Main Content */}
           <div className={`transition-all duration-300 ${showChat ? 'lg:w-2/3' : 'w-full max-w-4xl mx-auto'}`}>
-            {/* Progress Bar */}
+            {/* Futuristic Progress Bar */}
             <div className="mb-4 sm:mb-6 lg:mb-8">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs sm:text-sm font-medium text-white drop-shadow-lg">
+                <span className="text-xs sm:text-sm font-medium text-cyan-300 drop-shadow-lg">
                   Level {currentLevel.level_number} Progress
                 </span>
-                <span className="text-xs sm:text-sm text-white/80 drop-shadow-lg">
+                <span className="text-xs sm:text-sm text-cyan-400/80 drop-shadow-lg">
                   {questionIndex + 1}/{currentLevel.questions.length}
                 </span>
               </div>
-              <div className="w-full bg-white/30 rounded-full h-2 sm:h-3 backdrop-blur-sm">
+              <div className="w-full bg-slate-800/50 rounded-full h-2 sm:h-3 backdrop-blur-sm border border-cyan-500/30">
                 <div
-                  className="bg-gradient-to-r from-green-400 to-blue-500 h-2 sm:h-3 rounded-full transition-all duration-500 shadow-lg"
+                  className="bg-gradient-to-r from-cyan-400 to-purple-500 h-2 sm:h-3 rounded-full transition-all duration-500 shadow-lg shadow-cyan-500/50"
                   style={{ width: `${((questionIndex + 1) / currentLevel.questions.length) * 100}%` }}
                 ></div>
               </div>
             </div>
 
-            {/* Question Card */}
-            <div className="bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 border border-white/30 transition-all duration-500 hover:shadow-3xl">
+            {/* Futuristic Question Card */}
+            <div className="bg-slate-900/90 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 border border-cyan-500/30 transition-all duration-500 hover:shadow-cyan-500/20 hover:shadow-2xl">
               <div className="text-center mb-4 sm:mb-6">
                 <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mb-4">
-                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800">
+                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">
                     Question {questionIndex + 1}
                   </h2>
                   <button
                     onClick={speakQuestion}
-                    className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-lg"
+                    className="flex items-center space-x-2 text-cyan-400 hover:text-cyan-300 transition-colors bg-cyan-500/20 hover:bg-cyan-500/30 px-3 py-1 rounded-lg border border-cyan-500/30"
                   >
                     <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     <span className="text-sm">Listen</span>
                   </button>
                 </div>
-                <p className="text-base sm:text-lg lg:text-xl text-gray-700 mb-4 leading-relaxed">{currentQuestion.text}</p>
-                <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-gray-500">
+                <p className="text-base sm:text-lg lg:text-xl text-cyan-100 mb-4 leading-relaxed">{currentQuestion.text}</p>
+                <div className="flex items-center justify-center space-x-4 text-xs sm:text-sm text-gray-400">
                   <div className="flex items-center space-x-1">
                     <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span>Minimum: 60 seconds</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Target className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span>Level {currentLevel.level_number}: {getLevelConfig(currentLevel.level_number).passRate}% to pass</span>
+                    <span>{getLevelConfig(currentLevel.level_number).minTime}s - {getLevelConfig(currentLevel.level_number).maxTime}s</span>
                   </div>
                 </div>
               </div>
@@ -740,71 +887,124 @@ const SpeakingLearning = () => {
                   <button
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isAnalyzing}
-                    className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform ${
+                    className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform ${
                       isRecording
-                        ? 'bg-red-500 hover:bg-red-600 scale-110 animate-pulse'
-                        : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
-                    } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} shadow-2xl`}
+                        ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50'
+                        : 'bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50'
+                    } ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
                   >
-                    {isRecording ? <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12" /> : <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12" />}
+                    {isRecording ? (
+                      <>
+                        <MicOff className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
+                        <span className="text-xs sm:text-sm font-bold">STOP</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
+                        <span className="text-xs sm:text-sm font-bold">START</span>
+                      </>
+                    )}
                   </button>
                   
                   {isRecording && (
-                    <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-red-300 animate-ping"></div>
+                    <div className="absolute inset-0 rounded-full border-2 sm:border-4 border-cyan-400 animate-ping"></div>
                   )}
                 </div>
                 
                 <div className="space-y-3">
-                  <p className="text-sm sm:text-base lg:text-lg font-medium text-gray-700 px-2">
+                  <p className="text-sm sm:text-base lg:text-lg font-medium text-cyan-100 px-2">
                     {isAutoSubmitting 
-                      ? '🎯 Jawaabkaaga waan gudbinayaa...'
+                      ? '🎯 Submitting your answer...'
                       : isRecording 
-                      ? `Rikoordka... ${formatTime(recordingTime)}` 
-                      : 'Riinka rikoordka bilow'}
+                      ? `🎤 Recording... ${formatTime(recordingTime)} - Keep talking!` 
+                      : '🎯 Click START to begin recording'}
                   </p>
+                  
+                  {isRecording && (
+                    <div className="text-center space-y-2">
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium text-cyan-300">RECORDING ACTIVE</span>
+                        <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
+                      </div>
+                      <p className="text-xs text-cyan-400">
+                        💡 Speak clearly and naturally. Click STOP when finished.
+                      </p>
+                    </div>
+                  )}
                   
                   {recordingTime > 0 && (
                     <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4">
-                                              <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
-                          <span>0:00</span>
-                          <span className={
-                            recordingTime >= 60 ? 'text-green-600 font-medium' : 'text-orange-600'
-                          }>
-                            {recordingTime >= 60 ? '🎯 Ready to submit!' : `${Math.max(60 - recordingTime, 0)}s to minimum`}
-                          </span>
-                          <span>3:00</span>
-                        </div>
-                                              <div className="w-full bg-gray-200 rounded-full h-3">
-                          <div
-                            className={`h-3 rounded-full transition-all duration-300 ${
-                              recordingTime >= 60 ? 'bg-green-500' : 'bg-orange-500'
-                            }`}
-                            style={{ width: `${Math.min((recordingTime / 180) * 100, 100)}%` }}
-                          ></div>
-                        </div>
-                      {recordingTime >= 60 && isRecording && !isAutoSubmitting && (
-                        <div className="mt-2 text-center space-y-2">
-                          <button
-                            onClick={() => {
-                              stopRecording()
-                              setTimeout(() => {
-                                setIsAutoSubmitting(true)
-                                analyzeAnswer()
-                              }, 500)
-                            }}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                              recordingTime >= 60 ? 'bg-green-500 hover:bg-green-600 text-white animate-pulse' : 'bg-orange-500 hover:bg-orange-600 text-white'
-                            }`}
-                          >
-                            {recordingTime >= 60 ? '🎯 Dhamaystir oo gudbi!' : 'Jooji oo gudbi'}
-                          </button>
-                          {recordingTime < 60 && (
-                            <p className="text-xs text-gray-600">
-                              💡 Hadda waa hagaag, laakiin 60s waa fiican
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      {(() => {
+                        const levelConfig = getLevelConfig(currentLevel.level_number)
+                        const minTime = levelConfig.minTime
+                        const maxTime = levelConfig.maxTime
+                        const progress = (recordingTime / maxTime) * 100
+                        
+                        return (
+                          <>
+                            <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                              <span>0:00</span>
+                              <span className={
+                                recordingTime >= minTime ? 'text-green-600 font-medium' : 'text-orange-600'
+                              }>
+                                {recordingTime >= minTime ? '🎯 Ready to submit!' : `${Math.max(minTime - recordingTime, 0)}s to minimum`}
+                              </span>
+                              <span>{Math.floor(maxTime/60)}:{(maxTime%60).toString().padStart(2,'0')}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-3">
+                              <div
+                                className={`h-3 rounded-full transition-all duration-300 ${
+                                  recordingTime >= minTime ? 'bg-green-500' : 'bg-orange-500'
+                                }`}
+                                style={{ width: `${Math.min(progress, 100)}%` }}
+                              ></div>
+                            </div>
+                          </>
+                        )
+                      })()}
+                      {(() => {
+                        const levelConfig = getLevelConfig(currentLevel.level_number)
+                        const minTime = levelConfig.minTime
+                        
+                        return recordingTime >= minTime && isRecording && !isAutoSubmitting && (
+                          <div className="mt-2 text-center space-y-2">
+                            {showSilenceWarning && (
+                              <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mb-2">
+                                <p className="text-yellow-800 font-medium text-sm">
+                                  ⚠️ Auto-submitting in {silenceCountdown} seconds due to silence...
+                                </p>
+                                <button
+                                  onClick={() => {
+                                    setShowSilenceWarning(false)
+                                    setSilenceCountdown(0)
+                                    setLastSpeechTime(Date.now())
+                                    if (silenceCountdownRef.current) {
+                                      clearInterval(silenceCountdownRef.current)
+                                      silenceCountdownRef.current = null
+                                    }
+                                  }}
+                                  className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs"
+                                >
+                                  Continue Speaking
+                                </button>
+                              </div>
+                            )}
+                            <button
+                              onClick={() => {
+                                stopRecording()
+                                setTimeout(() => {
+                                  setIsAutoSubmitting(true)
+                                  analyzeAnswer()
+                                }, 500)
+                              }}
+                              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors animate-pulse"
+                            >
+                              🎯 Dhamaystir oo gudbi!
+                            </button>
+                          </div>
+                        )
+                      })()}
                       {isAutoSubmitting && (
                         <div className="mt-4 text-center">
                           <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
@@ -820,14 +1020,14 @@ const SpeakingLearning = () => {
                 </div>
               </div>
 
-              {/* Transcript */}
+              {/* Modern Transcript */}
               {transcript && (
-                <div className="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
-                  <h3 className="font-semibold text-gray-800 mb-3 text-sm sm:text-base">What you said:</h3>
+                <div className="bg-slate-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-cyan-500/30">
+                  <h3 className="font-semibold text-cyan-300 mb-3 text-sm sm:text-base">What you said:</h3>
                   <textarea
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full p-3 sm:p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+                    className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm sm:text-base text-cyan-100 placeholder-cyan-400"
                     rows="4"
                     placeholder="Edit your transcript if needed..."
                   />
@@ -836,13 +1036,13 @@ const SpeakingLearning = () => {
                       {audioBlob && (
                         <button
                           onClick={playAudio}
-                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-lg"
+                          className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-lg font-medium"
                         >
-                          <Play className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span className="text-xs sm:text-sm">Play Recording</span>
+                          <Volume2 className="w-4 h-4" />
+                          <span className="text-sm">🎧 Listen to Your Recording</span>
                         </button>
                       )}
-                      <span className="text-xs text-gray-500 max-w-xs sm:max-w-none">
+                      <span className="text-xs text-cyan-400 max-w-xs sm:max-w-none">
                         💡 You can edit the text above if speech recognition made mistakes
                       </span>
                     </div>
@@ -850,13 +1050,13 @@ const SpeakingLearning = () => {
                       {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && (
                         <button
                           onClick={analyzeAnswer}
-                          className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors animate-pulse text-sm sm:text-base"
+                          className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-2 rounded-lg font-medium transition-colors animate-pulse text-sm sm:text-base shadow-lg"
                         >
                           ✓ Jawaabka gudbi ({formatTime(recordingTime)})
                         </button>
                       )}
                       {isAutoSubmitting && (
-                        <div className="w-full sm:w-auto bg-blue-100 text-blue-700 px-4 sm:px-6 py-2 rounded-lg font-medium animate-pulse text-center text-sm sm:text-base">
+                        <div className="w-full sm:w-auto bg-cyan-500/20 text-cyan-300 px-4 sm:px-6 py-2 rounded-lg font-medium animate-pulse text-center text-sm sm:text-base border border-cyan-500/30">
                           🎯 Si otomaatig ah ayaa loo gudbinayaa...
                         </div>
                       )}
@@ -1013,72 +1213,71 @@ const SpeakingLearning = () => {
             )}
           </div>
 
-          {/* Chat Sidebar */}
+          {/* Modern Chat Sidebar */}
           {showChat && groupRoom && (
-            <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl border border-white/30 h-fit lg:sticky lg:top-24 transition-all duration-500 mt-4 lg:mt-0`}>
-              <div className="p-3 sm:p-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800 text-sm sm:text-base">
-                    {category?.name} Chat
-                  </h3>
-                  <div className="flex items-center space-x-1 text-xs sm:text-sm text-gray-600">
-                    <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span className="hidden sm:inline">
-                      {onlineUsers === 1 ? "You're online" : `${onlineUsers} recently active`}
-                    </span>
-                    <span className="sm:hidden">{onlineUsers}</span>
-                    {/* Connection status indicator */}
-                    <div className={`w-2 h-2 rounded-full ml-2 ${
-                      connectionStatus === 'connected' ? 'bg-green-500' : 
-                      connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-                    }`} title={`Connection: ${connectionStatus}`}></div>
-                    {/* Debug info */}
-                    <span className="text-xs text-gray-400 ml-2">
-                      ({chatMessages.length} msgs)
-                    </span>
+            <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full bg-slate-900/90 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl border border-cyan-500/30 h-fit lg:sticky lg:top-24 transition-all duration-500 mt-4 lg:mt-0`}>
+                              <div className="p-3 sm:p-4 border-b border-cyan-500/30">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-white text-sm sm:text-base">
+                      {category?.name} Chat
+                    </h3>
+                    <div className="flex items-center space-x-1 text-xs sm:text-sm text-cyan-300">
+                      <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline">
+                        {onlineUsers === 1 ? "You're online" : `${onlineUsers} active`}
+                      </span>
+                      <span className="sm:hidden">{onlineUsers}</span>
+                      {/* Connection status indicator */}
+                      <div className={`w-2 h-2 rounded-full ml-2 ${
+                        connectionStatus === 'connected' ? 'bg-green-400' : 
+                        connectionStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
+                      }`} title={`Connection: ${connectionStatus}`}></div>
+                    </div>
                   </div>
                 </div>
-              </div>
               
               <div className="h-64 sm:h-80 lg:h-96 overflow-y-auto p-3 sm:p-4 space-y-3">
-                {chatMessages.map((message, idx) => (
-                  <div key={message.id || idx} className={`flex space-x-2 sm:space-x-3 ${message.isTemporary ? 'opacity-60' : ''}`}>
-                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-medium flex-shrink-0">
-                      {message.user_profiles?.full_name?.charAt(0) || 'U'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-xs sm:text-sm font-medium text-gray-800 truncate">
-                          {message.user_profiles?.full_name || 'User'}
-                        </span>
-                        <span className="text-xs text-gray-500 flex-shrink-0">
-                          {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </span>
-                        {message.isTemporary && (
-                          <span className="text-xs text-gray-400">Sending...</span>
-                        )}
+                {chatMessages.map((message, idx) => {
+                  const isCurrentUser = message.user_id === user.id
+                  const displayName = isCurrentUser ? "You" : `User ${message.user_id.slice(-4)}`
+                  const avatarColor = isCurrentUser ? "bg-blue-500" : "bg-purple-500"
+                  
+                  return (
+                    <div key={message.id || idx} className={`flex space-x-2 sm:space-x-3 ${message.isTemporary ? 'opacity-60' : ''} ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                      <div className={`w-6 h-6 sm:w-8 sm:h-8 ${avatarColor} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-medium flex-shrink-0`}>
+                        {isCurrentUser ? 'Y' : message.user_id.slice(-1).toUpperCase()}
                       </div>
-                      <p className="text-xs sm:text-sm text-gray-700 break-words">
-                        {message.message}
-                        {message.message_type === 'progress_share' && (
-                          <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                            Progress Update
+                      <div className={`flex-1 min-w-0 ${isCurrentUser ? 'text-right' : ''}`}>
+                        <div className={`flex items-center space-x-2 mb-1 ${isCurrentUser ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                          <span className={`text-xs sm:text-sm font-medium truncate ${isCurrentUser ? 'text-cyan-300' : 'text-white'}`}>
+                            {displayName}
                           </span>
-                        )}
-                      </p>
+                          <span className="text-xs text-cyan-400 flex-shrink-0">
+                            {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                          {message.isTemporary && (
+                            <span className="text-xs text-cyan-500">Sending...</span>
+                          )}
+                        </div>
+                        <div className={`${isCurrentUser ? 'bg-cyan-500/20 border border-cyan-500/30' : 'bg-slate-800/50 border border-slate-600/30'} rounded-lg p-2`}>
+                          <p className="text-xs sm:text-sm text-cyan-100 break-words">
+                            {message.message}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 
                 {chatMessages.length === 0 && (
-                  <div className="text-center text-gray-500 py-8">
+                  <div className="text-center text-cyan-400 py-8">
                     <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No messages yet. Start the conversation!</p>
                   </div>
                 )}
               </div>
               
-              <div className="p-3 sm:p-4 border-t border-gray-200">
+              <div className="p-3 sm:p-4 border-t border-cyan-500/30">
                 <div className="flex space-x-2">
                   <input
                     type="text"
@@ -1086,11 +1285,11 @@ const SpeakingLearning = () => {
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                     placeholder="Type a message..."
-                    className="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="flex-1 px-2 sm:px-3 py-2 bg-slate-800/50 border border-cyan-500/30 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm text-cyan-100 placeholder-cyan-400"
                   />
                   <button
                     onClick={sendMessage}
-                    className="px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex-shrink-0"
+                    className="px-3 sm:px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white rounded-lg transition-colors flex-shrink-0"
                   >
                     <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>

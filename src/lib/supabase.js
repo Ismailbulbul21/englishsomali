@@ -410,10 +410,7 @@ export const getLearningAnalytics = async (userId) => {
 export const getGroupRooms = async () => {
   const { data, error } = await supabase
     .from('group_rooms')
-    .select(`
-      *,
-      categories (name, icon)
-    `)
+    .select('*')
     .eq('is_active', true)
     .order('name')
   return { data, error }
@@ -422,13 +419,28 @@ export const getGroupRooms = async () => {
 export const getChatMessages = async (roomId, limit = 50) => {
   const { data, error } = await supabase
     .from('chat_messages')
-    .select(`
-      *,
-      user_profiles (full_name)
-    `)
+    .select('*')
     .eq('room_id', roomId)
     .order('created_at', { ascending: false })
     .limit(limit)
+  
+  // If we have messages, add user info
+  if (data && data.length > 0) {
+    const messagesWithUserInfo = data.map(message => {
+      // Generate a consistent user name based on user_id
+      const userIdHash = message.user_id.slice(-4) // Last 4 chars of user ID
+      const userName = `User ${userIdHash}`
+      
+      return {
+        ...message,
+        user_profiles: {
+          full_name: userName
+        }
+      }
+    })
+    return { data: messagesWithUserInfo, error }
+  }
+  
   return { data, error }
 }
 
@@ -526,28 +538,17 @@ export const subscribeToChatMessages = (roomId, callback) => {
         filter: `room_id=eq.${roomId}`
       },
       async (payload) => {
-        // Fetch the complete message with user profile data
-        try {
-          const { data: messageWithProfile } = await supabase
-            .from('chat_messages')
-            .select(`
-              *,
-              user_profiles (full_name)
-            `)
-            .eq('id', payload.new.id)
-            .single()
-          
-          if (messageWithProfile) {
-            callback({ new: messageWithProfile })
-          } else {
-            // Fallback to original payload if profile fetch fails
-            callback(payload)
+        // Add user profile info to the message
+        const userIdHash = payload.new.user_id.slice(-4)
+        const userName = `User ${userIdHash}`
+        
+        const messageWithProfile = {
+          ...payload.new,
+          user_profiles: {
+            full_name: userName
           }
-        } catch (error) {
-          console.error('Error fetching message with profile:', error)
-          // Fallback to original payload
-          callback(payload)
         }
+        callback({ new: messageWithProfile })
       }
     )
     .subscribe((status) => {
