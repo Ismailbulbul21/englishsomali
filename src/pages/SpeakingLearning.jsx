@@ -498,6 +498,15 @@ const SpeakingLearning = () => {
   }
 
   const stopRecording = () => {
+    // Prevent stopping before minimum time
+    const levelConfig = getLevelConfig(currentLevel.level_number)
+    const minimumTime = levelConfig.minTime
+    
+    if (recordingTime < minimumTime) {
+      alert(`⚠️ Ma joojin kartid! Ugu yaraan ${minimumTime} ilbiriqsi ayaa loo baahan yahay. Hadda: ${recordingTime} ilbiriqsi. Sii hadal!`)
+      return // Don't stop recording
+    }
+
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
@@ -525,14 +534,6 @@ const SpeakingLearning = () => {
     setIsRecording(false)
     setShowSilenceWarning(false)
     setSilenceCountdown(0)
-    
-    // Check if stopped before minimum time
-    const levelConfig = getLevelConfig(currentLevel.level_number)
-    const minimumTime = levelConfig.minTime
-    
-    if (recordingTime < minimumTime) {
-      alert(`⚠️ Duubista waa la joojiyay! Ugu yaraan ${minimumTime} ilbiriqsi ayaa loo baahan yahay. Hadda: ${recordingTime} ilbiriqsi. Fadlan dib u duub.`)
-    }
   }
 
   const startNewRecording = () => {
@@ -838,9 +839,9 @@ const SpeakingLearning = () => {
               </button>
               
               {/* Score Display */}
-              <div className="text-right hidden sm:block">
-                <div className="text-xs text-cyan-400">Score</div>
-                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-white">
+              <div className="text-right">
+                <div className="text-xs text-cyan-400 hidden sm:block">Score</div>
+                <div className="text-base sm:text-lg lg:text-2xl font-bold text-white">
                   {feedback?.overallScore || 0}%
                 </div>
               </div>
@@ -902,19 +903,19 @@ const SpeakingLearning = () => {
                     <button
                       onClick={transcript ? startNewRecording : startRecording}
                       disabled={isAnalyzing}
-                      className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
+                      className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 hover:scale-105 shadow-lg shadow-cyan-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
                     >
-                      <Mic className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
-                      <span className="text-xs sm:text-sm font-bold">{transcript ? 'CUSUB' : 'BILOW'}</span>
+                      <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1" />
+                      <span className="text-sm sm:text-base font-bold">{transcript ? 'CUSUB' : 'BILOW'}</span>
                     </button>
                   ) : (
                     <button
                       onClick={stopRecording}
                       disabled={isAnalyzing}
-                      className={`w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
+                      className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-base sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse shadow-lg shadow-red-500/50 ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''} border-2 border-white/20`}
                     >
-                      <MicOff className="w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 mb-1" />
-                      <span className="text-xs sm:text-sm font-bold">JOOJI</span>
+                      <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1" />
+                      <span className="text-sm sm:text-base font-bold">JOOJI</span>
                     </button>
                   )}
                   
@@ -923,8 +924,8 @@ const SpeakingLearning = () => {
                   )}
                 </div>
                 
-                <div className="space-y-3">
-                  <p className="text-sm sm:text-base lg:text-lg font-medium text-cyan-100 px-2">
+                <div className="space-y-4">
+                  <p className="text-base sm:text-lg lg:text-xl font-medium text-cyan-100 px-2">
                     {isAutoSubmitting 
                       ? '🎯 Jawaabka la gudbinayaa...'
                       : isRecording 
@@ -935,20 +936,20 @@ const SpeakingLearning = () => {
                   </p>
                   
                   {isRecording && (
-                    <div className="text-center space-y-2">
+                    <div className="text-center space-y-3">
                       <div className="flex items-center justify-center space-x-2">
                         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-cyan-300">DUUBISTA SOCOTA</span>
+                        <span className="text-sm sm:text-base font-medium text-cyan-300">DUUBISTA SOCOTA</span>
                         <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
                       </div>
-                                              <p className="text-xs text-cyan-400">
-                          💡 Si cad oo dabiici ah u hadal. JOOJI riix markaad dhamaysato.
-                        </p>
+                      <p className="text-sm sm:text-base text-cyan-400 px-4">
+                        💡 Si cad oo dabiici ah u hadal. Ma joojin kartid ilaa aad gaadhid ugu yaraan {getLevelConfig(currentLevel.level_number).minTime} ilbiriqsi.
+                      </p>
                     </div>
                   )}
                   
                   {recordingTime > 0 && (
-                    <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4">
+                    <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-2 sm:px-4">
                       {(() => {
                         const levelConfig = getLevelConfig(currentLevel.level_number)
                         const minTime = levelConfig.minTime
@@ -957,19 +958,19 @@ const SpeakingLearning = () => {
                         
                         return (
                           <>
-                            <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                            <div className="flex items-center justify-between text-xs sm:text-sm text-gray-300 mb-2">
                               <span>0:00</span>
-                              <span className={
-                                recordingTime >= minTime ? 'text-green-600 font-medium' : 'text-orange-600'
-                              }>
-                                {recordingTime >= minTime ? '🎯 Diyaar u ah in la gudbiyo!' : `${Math.max(minTime - recordingTime, 0)}s ugu yaraan`}
+                              <span className={`text-center px-2 py-1 rounded-lg font-medium ${
+                                recordingTime >= minTime ? 'text-green-300 bg-green-500/20' : 'text-orange-300 bg-orange-500/20'
+                              }`}>
+                                {recordingTime >= minTime ? '🎯 Diyaar!' : `${Math.max(minTime - recordingTime, 0)}s ugu yaraan`}
                               </span>
                               <span>{Math.floor(maxTime/60)}:{(maxTime%60).toString().padStart(2,'0')}</span>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-3">
+                            <div className="w-full bg-slate-700/50 rounded-full h-4 mb-3 border border-cyan-500/30">
                               <div
-                                className={`h-3 rounded-full transition-all duration-300 ${
-                                  recordingTime >= minTime ? 'bg-green-500' : 'bg-orange-500'
+                                className={`h-4 rounded-full transition-all duration-300 shadow-lg ${
+                                  recordingTime >= minTime ? 'bg-gradient-to-r from-green-400 to-green-500' : 'bg-gradient-to-r from-orange-400 to-orange-500'
                                 }`}
                                 style={{ width: `${Math.min(progress, 100)}%` }}
                               ></div>
@@ -982,10 +983,10 @@ const SpeakingLearning = () => {
                         const minTime = levelConfig.minTime
                         
                         return recordingTime >= minTime && isRecording && !isAutoSubmitting && (
-                          <div className="mt-2 text-center space-y-2">
+                          <div className="mt-3 text-center space-y-3">
                             {showSilenceWarning && (
-                              <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mb-2">
-                                <p className="text-yellow-800 font-medium text-sm">
+                              <div className="bg-yellow-500/20 border border-yellow-400/50 rounded-lg p-3 mb-3">
+                                <p className="text-yellow-200 font-medium text-sm sm:text-base">
                                   ⚠️ {silenceCountdown} ilbiriqsi gudaha jawaabka la gudbinayaa...
                                 </p>
                                 <button
@@ -998,33 +999,38 @@ const SpeakingLearning = () => {
                                       silenceCountdownRef.current = null
                                     }
                                   }}
-                                  className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs"
+                                  className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
                                 >
                                   Sii Hadal
                                 </button>
                               </div>
                             )}
-                            <button
-                              onClick={() => {
-                                stopRecording()
-                                setTimeout(() => {
-                                  setIsAutoSubmitting(true)
-                                  analyzeAnswer()
-                                }, 500)
-                              }}
-                              className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors animate-pulse"
-                            >
-                              🎯 Jooji ama waad sii wadan kartaa!
-                            </button>
+                            <div className="bg-green-500/20 border border-green-400/50 rounded-lg p-3">
+                              <p className="text-green-200 font-medium text-sm sm:text-base mb-2">
+                                ✅ Waqtigaaga ugu yaraan waa la gaaray! Hadda waad joojin kartaa.
+                              </p>
+                              <button
+                                onClick={() => {
+                                  stopRecording()
+                                  setTimeout(() => {
+                                    setIsAutoSubmitting(true)
+                                    analyzeAnswer()
+                                  }, 500)
+                                }}
+                                className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-3 rounded-lg font-bold transition-colors text-base shadow-lg"
+                              >
+                                🎯 Jooji oo Gudbi
+                              </button>
+                            </div>
                           </div>
                         )
                       })()}
                       {isAutoSubmitting && (
                         <div className="mt-4 text-center">
-                          <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
+                          <div className="bg-gradient-to-r from-blue-500/20 to-green-500/20 border border-blue-400/50 rounded-lg p-4">
                             <div className="flex items-center justify-center space-x-3">
                               <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-300 border-t-blue-600"></div>
-                              <span className="text-blue-700 font-medium">🎯 Bartilmaameedka la gaaray! Jawaabkaaga waan gudbinayaa...</span>
+                              <span className="text-blue-200 font-medium text-sm sm:text-base">🎯 Jawaabkaaga waan gudbinayaa...</span>
                             </div>
                           </div>
                         </div>
@@ -1034,47 +1040,65 @@ const SpeakingLearning = () => {
                 </div>
               </div>
 
-              {/* Modern Transcript */}
-              {transcript && (
+              {/* Modern Transcript - Always visible when there's content */}
+              {(transcript || (!isRecording && recordingTime > 0)) && (
                 <div className="bg-slate-800/50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-cyan-500/30">
-                  <h3 className="font-semibold text-cyan-300 mb-3 text-base">Waxaad tidhi:</h3>
-                  <textarea
-                    value={transcript}
-                    onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm sm:text-base text-cyan-100 placeholder-cyan-400"
-                    rows="4"
-                    placeholder="Haddii loo baahdo wax ka beddel..."
-                  />
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 space-y-3 sm:space-y-0">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-                      {audioBlob && (
+                  <h3 className="font-semibold text-cyan-300 mb-3 text-base sm:text-lg">
+                    {transcript ? 'Waxaad tidhi:' : 'Duubista la dhammeeyay - Eeg qoraalka:'}
+                  </h3>
+                  
+                  {transcript ? (
+                    <textarea
+                      value={transcript}
+                      onChange={(e) => setTranscript(e.target.value)}
+                      className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg resize-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-400 text-sm sm:text-base text-cyan-100 placeholder-cyan-400 min-h-[100px]"
+                      rows="4"
+                      placeholder="Haddii loo baahdo wax ka beddel..."
+                    />
+                  ) : (
+                    <div className="w-full p-3 sm:p-4 bg-slate-900/50 border border-cyan-500/30 rounded-lg min-h-[100px] flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-300 border-t-cyan-600 mx-auto mb-2"></div>
+                        <p className="text-cyan-300 text-sm">Qoraalka la soo sarayaa...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mt-4 space-y-3">
+                    {/* Audio playback button */}
+                    {audioBlob && (
+                      <div className="flex justify-center">
                         <button
                           onClick={playAudio}
-                          className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-lg font-medium"
+                          className="flex items-center space-x-2 text-purple-300 hover:text-purple-100 transition-colors bg-purple-500/20 hover:bg-purple-500/30 px-4 py-2 rounded-lg font-medium border border-purple-500/30"
                         >
                           <Volume2 className="w-4 h-4" />
-                          <span className="text-sm">🎧 Listen to Your Recording</span>
+                          <span className="text-sm">🎧 Dhegayso Duubkaaga</span>
                         </button>
-                      )}
-                      <span className="text-xs text-cyan-400 max-w-xs sm:max-w-none">
-                        💡 Haddii codka aqoonsiga khalad sameeyo wax ka beddeli karto
-                      </span>
-                    </div>
-                    <div className="w-full">
-                      {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && (
-                        <button
-                          onClick={analyzeAnswer}
-                          className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-3 rounded-lg font-bold transition-colors animate-pulse text-base shadow-lg"
-                        >
-                          ✓ Jawaabka Gudbi ({formatTime(recordingTime)})
-                        </button>
-                      )}
-                      {isAutoSubmitting && (
-                        <div className="w-full bg-cyan-500/20 text-cyan-300 px-6 py-3 rounded-lg font-bold animate-pulse text-center text-base border border-cyan-500/30">
-                          🎯 Jawaabka la gudbinayaa...
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    
+                    {/* Help text */}
+                    <p className="text-xs sm:text-sm text-cyan-400 text-center px-2">
+                      💡 Haddii codka aqoonsiga khalad sameeyo wax ka beddeli karto
+                    </p>
+                    
+                    {/* Submit button - Always visible when conditions are met */}
+                    {!feedback && !isAnalyzing && !isAutoSubmitting && canSubmit && transcript && (
+                      <button
+                        onClick={analyzeAnswer}
+                        className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-4 rounded-lg font-bold transition-colors text-base sm:text-lg shadow-lg animate-pulse"
+                      >
+                        ✓ Jawaabka Gudbi ({formatTime(recordingTime)})
+                      </button>
+                    )}
+                    
+                    {/* Auto-submitting state */}
+                    {isAutoSubmitting && (
+                      <div className="w-full bg-cyan-500/20 text-cyan-300 px-6 py-4 rounded-lg font-bold animate-pulse text-center text-base sm:text-lg border border-cyan-500/30">
+                        🎯 Jawaabka la gudbinayaa...
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1229,7 +1253,7 @@ const SpeakingLearning = () => {
 
           {/* Modern Chat Sidebar */}
           {showChat && groupRoom && (
-            <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full bg-slate-900/90 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl border border-cyan-500/30 h-fit lg:sticky lg:top-24 transition-all duration-500 mt-4 lg:mt-0`}>
+            <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full bg-slate-900/90 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-2xl border border-cyan-500/30 h-fit lg:sticky lg:top-24 transition-all duration-500 mt-6 lg:mt-0`}>
                               <div className="p-3 sm:p-4 border-b border-cyan-500/30">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-white text-sm sm:text-base">
