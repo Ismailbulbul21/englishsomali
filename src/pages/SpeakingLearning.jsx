@@ -691,14 +691,10 @@ const SpeakingLearning = () => {
     <div 
       className="min-h-screen relative"
       style={{
-        background: `
-          radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-          radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.1) 0%, transparent 50%),
-          radial-gradient(circle, rgba(148, 163, 184, 0.3) 1px, transparent 1px)
-        `,
-        backgroundSize: '600px 600px, 600px 600px, 30px 30px',
-        backgroundPosition: '0 0, 0 0, 0 0',
-        backgroundColor: '#f8fafc'
+        backgroundImage: `url('/learning-bg.svg')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
       }}
     >
       

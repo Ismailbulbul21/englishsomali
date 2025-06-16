@@ -51,6 +51,23 @@ const Dashboard = () => {
     return Math.round((progress.completed_levels.length / totalLevels) * 100)
   }
 
+  // Somali translations for category names
+  const getSomaliTranslation = (categoryName) => {
+    const translations = {
+      'Daily Conversation': 'Hadallada Maalinlaha ah',
+      'Job Interview English': 'Ingiriiska Waraysiga Shaqada',
+      'School English': 'Ingiriiska Dugsiga',
+      'Travel English': 'Ingiriiska Safarka',
+      'Business English': 'Ingiriiska Ganacsiga',
+      'Basic Greetings': 'Salaamaha Aasaasiga ah',
+      'Workplace Communication': 'Isgaarsiinta Goobta Shaqada',
+      'Academic English': 'Ingiriiska Tacliinta Sare',
+      'Social Situations': 'Xaalado Bulsheed',
+      'Professional Meetings': 'Shirarka Xirfadeed'
+    }
+    return translations[categoryName] || categoryName
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -63,7 +80,7 @@ const Dashboard = () => {
     <div 
       className="min-h-screen relative"
       style={{
-        backgroundImage: `linear-gradient(135deg, rgba(16, 185, 129, 0.85), rgba(59, 130, 246, 0.85)), url('https://images.unsplash.com/photo-1481627834876-b7833e8f5570?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')`,
+        backgroundImage: `url('/dashboard-bg.svg')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed'
@@ -75,12 +92,14 @@ const Dashboard = () => {
           <div className="flex justify-between items-center py-4">
             {/* Logo and Title */}
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">E</span>
-              </div>
+              <img 
+                src="/hadalhub-icon.svg" 
+                alt="HadalHub" 
+                className="w-10 h-10"
+              />
               <div className="hidden sm:block">
                 <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  EnglishMaster
+                  HadalHub
                 </h1>
                 <p className="text-sm text-gray-600 hidden md:block">
                   Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0]}
@@ -140,7 +159,7 @@ const Dashboard = () => {
               </div>
               <div className="text-center sm:text-left">
                 <div className="text-xl sm:text-2xl font-bold text-gray-800">{userProgress.length}</div>
-                <div className="text-xs sm:text-sm text-gray-600">Paths Started</div>
+                <div className="text-xs sm:text-sm text-gray-600">Wadooyin La Bilaabay</div>
               </div>
             </div>
           </div>
@@ -154,7 +173,7 @@ const Dashboard = () => {
                 <div className="text-xl sm:text-2xl font-bold text-gray-800">
                   {userProgress.reduce((total, progress) => total + progress.completed_levels.length, 0)}
                 </div>
-                <div className="text-xs sm:text-sm text-gray-600">Levels Completed</div>
+                <div className="text-xs sm:text-sm text-gray-600">Heerarka La Dhammeeyay</div>
               </div>
             </div>
           </div>
@@ -171,7 +190,7 @@ const Dashboard = () => {
                     : 0
                   }%
                 </div>
-                <div className="text-xs sm:text-sm text-gray-600">Average Score</div>
+                <div className="text-xs sm:text-sm text-gray-600">Dhibcaha Celceliska ah</div>
               </div>
             </div>
           </div>
@@ -183,7 +202,7 @@ const Dashboard = () => {
               </div>
               <div className="text-center sm:text-left">
                 <div className="text-xl sm:text-2xl font-bold text-gray-800">0</div>
-                <div className="text-xs sm:text-sm text-gray-600">Day Streak</div>
+                <div className="text-xs sm:text-sm text-gray-600">Maalmaha Joogtada ah</div>
               </div>
             </div>
           </div>
@@ -192,7 +211,7 @@ const Dashboard = () => {
         {/* Learning Paths */}
         <div className="mb-6 sm:mb-8">
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 text-center sm:text-left drop-shadow-lg">
-            Choose Your Learning Path
+            Dooro Jidkaaga Barashada
           </h2>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -217,7 +236,8 @@ const Dashboard = () => {
                       )}
                     </div>
                     
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">{category.name}</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-1">{category.name}</h3>
+                    <p className="text-sm text-blue-600 font-medium mb-2">{getSomaliTranslation(category.name)}</p>
                     <p className="text-gray-600 mb-4 text-sm sm:text-base line-clamp-2">{category.description}</p>
                     
                     {/* Progress Bar */}
@@ -254,7 +274,7 @@ const Dashboard = () => {
         {/* Recent Activity */}
         {userProgress.length > 0 && (
           <div className="bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-xl border border-white/30 p-4 sm:p-6">
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Your Progress</h3>
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Horumarkaaga</h3>
             <div className="space-y-3 sm:space-y-4">
               {userProgress.map((progress, index) => {
                 const category = categories.find(cat => cat.id === progress.category_id)
@@ -269,6 +289,7 @@ const Dashboard = () => {
                       <div className="text-2xl sm:text-3xl">{category?.icon}</div>
                       <div>
                         <div className="font-medium text-gray-800 text-sm sm:text-base">{category?.name}</div>
+                        <div className="text-xs text-blue-600 font-medium">{getSomaliTranslation(category?.name)}</div>
                         <div className="text-xs sm:text-sm text-gray-600">
                           Level {progress.current_level} • {progress.completed_levels.length} levels completed
                         </div>
@@ -276,7 +297,7 @@ const Dashboard = () => {
                     </div>
                     <div className="text-left sm:text-right w-full sm:w-auto">
                       <div className="text-lg font-semibold text-blue-600">{progressPercentage}%</div>
-                      <div className="text-xs sm:text-sm text-gray-500">Complete</div>
+                      <div className="text-xs sm:text-sm text-gray-500">Dhammaystiran</div>
                     </div>
                   </div>
                 )
@@ -289,12 +310,12 @@ const Dashboard = () => {
         {userProgress.length === 0 && (
           <div className="bg-white/95 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-xl border border-white/30 p-6 sm:p-8 text-center">
             <div className="text-4xl sm:text-6xl mb-4">🎯</div>
-            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">Ready to Start Learning?</h3>
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">Ma Diyaar u tahay inaad Bilowdo Barashada?</h3>
             <p className="text-gray-600 mb-4 text-sm sm:text-base max-w-2xl mx-auto">
-              Choose a learning path above to begin your English journey. Each path is designed to help you succeed in real-world situations.
+              Dooro waddo barasho kor ku qoran si aad u bilowdo safarka Ingiriiskaaga. Waddo kastaa waxaa loogu talagalay inaad ku guulaysato xaalado dhabta ah.
             </p>
             <p className="text-xs sm:text-sm text-gray-500 max-w-xl mx-auto">
-              Start with Daily Conversation if you're new to English, or jump into Job Interview English if you're preparing for work.
+              Ku bilow Hadallada Maalinlaha ah haddii aad cusub tahay Ingiriiska, ama u gudub Ingiriiska Waraysiga Shaqada haddii aad u diyaarinayso shaqo.
             </p>
           </div>
         )}

@@ -1,8 +1,10 @@
 {
-  "name": "englishwebsiteerealworld",
+  "name": "hadalhub",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "description": "HadalHub - Master English Speaking through real conversations with AI-powered feedback",
+  "keywords": ["english learning", "somali", "speaking practice", "ai feedback", "language learning"],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
