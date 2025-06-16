@@ -416,7 +416,7 @@ export const getGroupRooms = async () => {
   return { data, error }
 }
 
-export const getChatMessages = async (roomId, limit = 50) => {
+export const getChatMessages = async (roomId, limit = 20) => {
   const { data, error } = await supabase
     .from('chat_messages')
     .select('*')
@@ -556,4 +556,4 @@ export const subscribeToChatMessages = (roomId, callback) => {
     })
   
   return channel
-} 
+}
