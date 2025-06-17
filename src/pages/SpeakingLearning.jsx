@@ -1135,18 +1135,7 @@ const SpeakingLearning = () => {
                 )}
               </div>
 
-              {/* Transcript Section - Modern (Read-only) */}
-              {transcript && (
-                <div className="bg-gray-50 rounded-2xl p-4 sm:p-6 mb-6 border border-gray-200 shadow-sm">
-                  <h3 className="font-semibold text-gray-700 mb-3 text-lg flex items-center">
-                    <span className="mr-2">📝</span>
-                    What you said:
-                  </h3>
-                  <div className="w-full p-4 bg-white border border-gray-300 rounded-xl text-base text-gray-700 min-h-[120px] shadow-sm leading-relaxed">
-                    {transcript || "Your speech will appear here..."}
-                  </div>
-                </div>
-              )}
+
 
               {/* Submit Button - Modern */}
               {!feedback && !isAnalyzing && transcript && !isRecording && (
