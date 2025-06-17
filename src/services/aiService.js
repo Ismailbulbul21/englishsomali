@@ -437,8 +437,8 @@ class AIService {
     return notes[scenario] || null
   }
 
-  // Enhanced speech-to-text with better accuracy
-  async transcribeAudio(audioBlob) {
+  // Enhanced speech-to-text with Somali-specific optimizations
+  async transcribeAudio(audioBlob, speechSettings = {}) {
     try {
       console.log('🎤 Transcribing audio blob size:', audioBlob.size)
       
@@ -453,19 +453,36 @@ class AIService {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
         const recognition = new SpeechRecognition()
         
-        // Enhanced configuration for better accuracy
-        recognition.continuous = false
-        recognition.interimResults = false
+        // Enhanced configuration for Somali users
+        recognition.continuous = true  // Better for handling pauses
+        recognition.interimResults = true  // Get partial results for faster feedback
         recognition.lang = 'en-US'
-        recognition.maxAlternatives = 3 // Get multiple alternatives
+        recognition.maxAlternatives = speechSettings.accentAdaptation === 'somali' ? 5 : 3
+        
+        // Apply dynamic settings based on speech settings
+        const timeoutMultiplier = {
+          'slow': 1.8,
+          'normal': 1.0,
+          'fast': 0.6
+        }[speechSettings.speakingSpeed] || 1.0
+        
+        recognition.audioStartTimeout = Math.round(5000 * timeoutMultiplier)
+        recognition.audioEndTimeout = {
+          'short': 1000,
+          'medium': 2000,
+          'long': 3000
+        }[speechSettings.pauseTolerance] || 2000
+        recognition.speechStartTimeout = Math.round(5000 * timeoutMultiplier)
         
         // Create audio element to play the recorded audio for recognition
         const audioUrl = URL.createObjectURL(audioBlob)
         const audio = new Audio(audioUrl)
         
         let finalTranscript = ''
+        let interimTranscript = ''
         let hasResult = false
         let isFinished = false
+        let confidenceScores = []
         
         recognition.onstart = () => {
           console.log('🎤 Speech recognition started for transcription')
@@ -476,42 +493,70 @@ class AIService {
           
           console.log('🎤 Recognition results:', event.results)
           
-          // Get the best result from alternatives
-          let bestTranscript = ''
-          let bestConfidence = 0
+          let currentFinalTranscript = ''
+          let currentInterimTranscript = ''
           
+          // Process all results
           for (let i = 0; i < event.results.length; i++) {
             const result = event.results[i]
+            const transcript = result[0].transcript
+            
             if (result.isFinal) {
-              for (let j = 0; j < result.length; j++) {
-                const alternative = result[j]
-                if (alternative.confidence > bestConfidence) {
-                  bestConfidence = alternative.confidence
-                  bestTranscript = alternative.transcript
-                }
-              }
+              currentFinalTranscript += transcript + ' '
+              confidenceScores.push(result[0].confidence)
+            } else {
+              currentInterimTranscript += transcript
             }
           }
           
-          finalTranscript = bestTranscript || event.results[0][0].transcript
-          hasResult = true
-          isFinished = true
-          console.log('🎤 Final transcription:', finalTranscript, 'Confidence:', bestConfidence)
-          URL.revokeObjectURL(audioUrl)
-          resolve(finalTranscript.trim())
+          finalTranscript = currentFinalTranscript.trim()
+          interimTranscript = currentInterimTranscript.trim()
+          
+          // Update hasResult if we have any meaningful content
+          if (finalTranscript || interimTranscript) {
+            hasResult = true
+          }
+          
+          console.log('🎤 Current transcription:', finalTranscript, 'Interim:', interimTranscript)
         }
 
         recognition.onerror = (event) => {
           if (isFinished) return
           
           console.error('🎤 Speech recognition error:', event.error)
+          
+          // Handle different error types specifically for Somali users
+          if (event.error === 'no-speech') {
+            if (!hasResult) {
+              URL.revokeObjectURL(audioUrl)
+              resolve("Hadalkagu ma muuqan - fadlan mar kale isku day (No speech detected - please try again)")
+            }
+            return
+          }
+          
+          if (event.error === 'audio-capture') {
+            isFinished = true
+            URL.revokeObjectURL(audioUrl)
+            resolve("Makarafoonka lama gaadhsiisan karo - hubi ogolaanshaha (Cannot access microphone - check permissions)")
+            return
+          }
+          
+          if (event.error === 'not-allowed') {
+            isFinished = true
+            URL.revokeObjectURL(audioUrl)
+            resolve("Makarafoonka oggolaansho ma laha - fadlan oggolow (Microphone permission denied - please allow)")
+            return
+          }
+          
+          // For other errors, continue if we have partial results
+          if (hasResult && (finalTranscript || interimTranscript)) {
+            recognition.stop()
+            return
+          }
+          
           isFinished = true
           URL.revokeObjectURL(audioUrl)
-          
-          if (!hasResult) {
-            // Provide a more helpful fallback message
-            resolve("I spoke in English but transcription was unclear - please try again")
-          }
+          resolve("Codkaaga lama fahmin - fadlan si cad u hadal (Speech unclear - please speak more clearly)")
         }
 
         recognition.onend = () => {
@@ -521,38 +566,210 @@ class AIService {
           isFinished = true
           URL.revokeObjectURL(audioUrl)
           
-          if (hasResult && finalTranscript.trim()) {
-            resolve(finalTranscript.trim())
+          // Process and clean the final result
+          let bestTranscript = finalTranscript || interimTranscript
+          
+          if (bestTranscript && bestTranscript.trim()) {
+            // Apply Somali-specific corrections
+            bestTranscript = this.applySomaliCorrections(bestTranscript.trim())
+            
+            // Calculate average confidence
+            const avgConfidence = confidenceScores.length > 0 
+              ? confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length 
+              : 0.5
+            
+            console.log('🎤 Final transcription:', bestTranscript, 'Avg Confidence:', avgConfidence)
+            
+            // Add confidence note for low-confidence results
+            if (avgConfidence < 0.5 && bestTranscript.length > 10) {
+              resolve(bestTranscript + " [Transcription may not be fully accurate - please verify]")
+            } else {
+              resolve(bestTranscript)
+            }
           } else if (!hasResult) {
-            resolve("Please speak more clearly and try again")
+            resolve("Fadlan mar kale isku day oo si tartiib ah u hadal (Please try again and speak slowly)")
+          } else {
+            resolve("Transcription ma guulaysanin - mar kale isku day (Transcription failed - please try again)")
           }
         }
 
-        // Start recognition immediately
-        try {
-          recognition.start()
-        } catch (error) {
-          console.error('Failed to start recognition:', error)
-          isFinished = true
-          URL.revokeObjectURL(audioUrl)
-          resolve("Speech recognition failed to start - please try again")
+        // Start recognition with retry logic
+        let startAttempts = 0
+        const tryStart = () => {
+          try {
+            recognition.start()
+          } catch (error) {
+            console.error('Failed to start recognition:', error)
+            startAttempts++
+            
+            if (startAttempts < 3) {
+              console.log(`Retrying speech recognition start (attempt ${startAttempts + 1})`)
+              setTimeout(tryStart, 1000)
+            } else {
+              isFinished = true
+              URL.revokeObjectURL(audioUrl)
+              resolve("Speech recognition bilaabi kari waayo - fadlan browser-ka cusub ka fur (Cannot start speech recognition - please refresh browser)")
+            }
+          }
         }
         
-        // Timeout after 15 seconds
+        tryStart()
+        
+        // Dynamic timeout based on speech settings
+        const maxTimeout = {
+          'slow': 35000,
+          'normal': 25000,
+          'fast': 15000
+        }[speechSettings.speakingSpeed] || 25000
+        
         setTimeout(() => {
           if (!isFinished) {
             isFinished = true
             recognition.stop()
             URL.revokeObjectURL(audioUrl)
-            resolve("Speech recognition timeout - please try speaking again")
+            
+            if (hasResult && (finalTranscript || interimTranscript)) {
+              const bestTranscript = finalTranscript || interimTranscript
+              if (bestTranscript.trim()) {
+                const correctedTranscript = speechSettings.autoCorrection !== false 
+                  ? this.applySomaliCorrections(bestTranscript.trim()) 
+                  : bestTranscript.trim()
+                resolve(correctedTranscript + " [Partial transcription]")
+              } else {
+                resolve("Waqti dhameeyay - mar kale isku day oo si dhaqso ah u hadal (Time up - try again and speak faster)")
+              }
+            } else {
+              resolve("Waqti dhameeyay - mar kale isku day (Time up - please try again)")
+            }
           }
-        }, 15000)
+        }, maxTimeout)
       })
       
     } catch (error) {
       console.error('❌ Transcription error:', error)
-      return "Thank you for speaking! Please try again for better transcription."
+      return "Mahaddsanid hadalladdaada! Fadlan mar kale isku day si transcription-ku u hagaago (Thank you for speaking! Please try again for better transcription)"
     }
+  }
+
+  // Apply Somali-specific corrections to transcription
+  applySomaliCorrections(transcript) {
+    // Common Somali names and places that get mis-transcribed
+    const somaliCorrections = {
+      // Names
+      'mohammed': 'Mohamed',
+      'mohamed': 'Mohamed', 
+      'ahmad': 'Ahmed',
+      'ahmed': 'Ahmed',
+      'fatima': 'Fatima',
+      'ayeesha': 'Aisha',
+      'aisha': 'Aisha',
+      'hassan': 'Hassan',
+      'hussain': 'Hussein',
+      'omar': 'Omar',
+      'umar': 'Omar',
+      'abdi': 'Abdi',
+      'abdul': 'Abdul',
+      'farah': 'Farah',
+      'amin': 'Amin',
+      'salim': 'Salim',
+      'halima': 'Halima',
+      'maryam': 'Maryam',
+      'zeinab': 'Zeinab',
+      
+      // Places
+      'somalia': 'Somalia',
+      'somali': 'Somali',
+      'mogadishu': 'Mogadishu',
+      'hargeisa': 'Hargeisa',
+      'kismayo': 'Kismayo',
+      'baidoa': 'Baidoa',
+      'garowe': 'Garowe',
+      'bosaso': 'Bosaso',
+      'galkayo': 'Galkayo',
+      'berbera': 'Berbera',
+      'jigjiga': 'Jigjiga',
+      'dire dawa': 'Dire Dawa',
+      'addis ababa': 'Addis Ababa',
+      'nairobi': 'Nairobi',
+      'minneapolis': 'Minneapolis',
+      'columbus': 'Columbus',
+      'seattle': 'Seattle',
+      'london': 'London',
+      'toronto': 'Toronto',
+      'ottawa': 'Ottawa',
+      'melbourne': 'Melbourne',
+      'stockholm': 'Stockholm',
+      'oslo': 'Oslo',
+      
+      // Common Somali-English words
+      'inshallah': 'insha\'Allah',
+      'mashallah': 'masha\'Allah',
+      'alhamdulillah': 'alhamdulillah',
+      'assalamu alaikum': 'assalamu alaikum',
+      'walaikum assalam': 'walaikum assalam',
+      'barakallahu': 'barakallahu',
+      'subhanallah': 'subhanallah',
+      
+      // Common mispronunciations by Somali speakers
+      'tree': 'three',
+      'tank you': 'thank you',
+      'dis': 'this',
+      'dat': 'that',
+      'dey': 'they',
+      'wit': 'with',
+      'finking': 'thinking',
+      'sometin': 'something',
+      'noting': 'nothing',
+      'everyting': 'everything',
+      'anyting': 'anything',
+      'ting': 'thing',
+      'tings': 'things',
+      'wat': 'what',
+      'wen': 'when',
+      'wer': 'where',
+      'wai': 'why',
+      'ow': 'how',
+      'dough': 'though',
+      'trough': 'through',
+      'frough': 'through',
+      'broblem': 'problem',
+      'blease': 'please',
+      'blay': 'play',
+      'bractice': 'practice',
+      
+      // Numbers that get confused
+      'tree': 'three',
+      'tirty': 'thirty',
+      'tousand': 'thousand',
+      'tinking': 'thinking'
+    }
+    
+    let correctedTranscript = transcript
+    
+    // Apply corrections (case-insensitive)
+    Object.entries(somaliCorrections).forEach(([wrong, correct]) => {
+      const regex = new RegExp(`\\b${wrong}\\b`, 'gi')
+      correctedTranscript = correctedTranscript.replace(regex, correct)
+    })
+    
+    // Fix common grammatical patterns
+    correctedTranscript = correctedTranscript
+      .replace(/\bis\s+are\b/gi, 'are') // "is are" -> "are"
+      .replace(/\bare\s+is\b/gi, 'is')   // "are is" -> "is"
+      .replace(/\ba\s+an\b/gi, 'an')     // "a an" -> "an"
+      .replace(/\ban\s+a\b/gi, 'a')      // "an a" -> "a"
+      .replace(/\bI\s+are\b/gi, 'I am')  // "I are" -> "I am"
+      .replace(/\bYou\s+is\b/gi, 'You are') // "You is" -> "You are"
+      .replace(/\bHe\s+are\b/gi, 'He is')   // "He are" -> "He is"
+      .replace(/\bShe\s+are\b/gi, 'She is') // "She are" -> "She is"
+      .replace(/\bIt\s+are\b/gi, 'It is')   // "It are" -> "It is"
+      .replace(/\bWe\s+is\b/gi, 'We are')   // "We is" -> "We are"
+      .replace(/\bThey\s+is\b/gi, 'They are') // "They is" -> "They are"
+      
+    // Clean up extra spaces
+    correctedTranscript = correctedTranscript.replace(/\s+/g, ' ').trim()
+    
+    return correctedTranscript
   }
 
   // Enhanced analyze answer with Somali feedback focus
@@ -1200,7 +1417,7 @@ class AIService {
     return Math.min(100, Math.max(0, score))
   }
 
-  // Use Web Speech API for live speech recognition during recording
+  // Use Web Speech API for live speech recognition during recording - Enhanced for Somali users
   async startLiveSpeechRecognition() {
     return new Promise((resolve, reject) => {
       if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -1211,42 +1428,88 @@ class AIService {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       this.recognitionRef = new SpeechRecognition()
       
+      // Enhanced settings for Somali users
       this.recognitionRef.continuous = true
       this.recognitionRef.interimResults = true
       this.recognitionRef.lang = 'en-US'
+      this.recognitionRef.maxAlternatives = 5
+      
+      // Somali-specific timeouts
+      this.recognitionRef.audioStartTimeout = 5000
+      this.recognitionRef.audioEndTimeout = 2000
+      this.recognitionRef.speechStartTimeout = 5000
 
       let finalTranscript = ''
+      let confidenceScores = []
 
       this.recognitionRef.onresult = (event) => {
         let interimTranscript = ''
+        let currentFinalTranscript = ''
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript
           if (event.results[i].isFinal) {
-            finalTranscript += transcript
+            currentFinalTranscript += transcript + ' '
+            confidenceScores.push(event.results[i][0].confidence)
           } else {
             interimTranscript += transcript
           }
         }
         
+        if (currentFinalTranscript) {
+          finalTranscript += currentFinalTranscript
+        }
+        
+        // Apply Somali corrections to both final and interim
+        const correctedFinal = finalTranscript ? this.applySomaliCorrections(finalTranscript.trim()) : ''
+        const correctedInterim = interimTranscript ? this.applySomaliCorrections(interimTranscript.trim()) : ''
+        
         // Return both final and interim results
         resolve({
-          final: finalTranscript,
-          interim: interimTranscript,
-          isComplete: false
+          final: correctedFinal,
+          interim: correctedInterim,
+          isComplete: false,
+          confidence: confidenceScores.length > 0 ? confidenceScores[confidenceScores.length - 1] : 0.5
         })
       }
 
       this.recognitionRef.onerror = (event) => {
         console.error('Speech recognition error:', event.error)
-        reject(new Error(`Speech recognition error: ${event.error}`))
+        
+        // Handle Somali-specific error messages
+        let errorMessage = `Speech recognition error: ${event.error}`
+        
+        switch(event.error) {
+          case 'no-speech':
+            errorMessage = 'Hadalkagu ma muuqan - fadlan mar kale isku day'
+            break
+          case 'audio-capture':
+            errorMessage = 'Makarafoonka lama gaadhsiisan karo - hubi ogolaanshaha'
+            break
+          case 'not-allowed':
+            errorMessage = 'Makarafoonka oggolaansho ma laha - fadlan oggolow'
+            break
+          case 'network':
+            errorMessage = 'Shabakada ayaa dhib ku jira - hubi internetka'
+            break
+          default:
+            errorMessage = 'Codkaaga lama fahmin - fadlan si cad u hadal'
+        }
+        
+        reject(new Error(errorMessage))
       }
 
       this.recognitionRef.onend = () => {
+        const correctedFinal = finalTranscript ? this.applySomaliCorrections(finalTranscript.trim()) : ''
+        const avgConfidence = confidenceScores.length > 0 
+          ? confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length 
+          : 0.5
+          
         resolve({
-          final: finalTranscript,
+          final: correctedFinal,
           interim: '',
-          isComplete: true
+          isComplete: true,
+          confidence: avgConfidence
         })
       }
 

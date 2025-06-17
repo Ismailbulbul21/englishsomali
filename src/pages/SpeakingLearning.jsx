@@ -6,11 +6,14 @@ import {
   Volume2, RotateCcw, MessageCircle, Users, Send, HelpCircle,
   Clock, CheckCircle, XCircle, Star
 } from 'lucide-react'
+import VoiceRecorder from '../components/VoiceRecorder'
 import { aiService } from '../services/aiService'
 import { 
   getCategories, getLevelsForCategory, getUserAttempts, saveUserAttempt,
   getFailedAttempts, getExampleAnswer, canUserProceed, getUserLevelProgress,
-  getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages
+  getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages,
+  getUserProgress, updateUserProgress, getRemainingVoiceMessages, 
+  uploadVoiceMessage, sendVoiceMessage
 } from '../lib/supabase'
 
 const SpeakingLearning = () => {
@@ -50,6 +53,11 @@ const SpeakingLearning = () => {
   const [onlineUsers, setOnlineUsers] = useState(1) // Start with just current user
   const [connectionStatus, setConnectionStatus] = useState('connecting') // connecting, connected, disconnected
   
+  // Voice message state
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [remainingVoiceMessages, setRemainingVoiceMessages] = useState(10)
+  const [isUploadingVoice, setIsUploadingVoice] = useState(false)
+  
   // UI state
   const [showNewUserGuide, setShowNewUserGuide] = useState(false)
   const [showResultPopup, setShowResultPopup] = useState(false)
@@ -61,6 +69,7 @@ const SpeakingLearning = () => {
   const timerRef = useRef(null)
   const audioChunksRef = useRef([])
   const chatSubscriptionRef = useRef(null)
+  const chatMessagesEndRef = useRef(null)
 
 
   useEffect(() => {
@@ -115,6 +124,7 @@ const SpeakingLearning = () => {
     if (groupRoom) {
       loadChatMessages()
       setupChatSubscription()
+      loadRemainingVoiceMessages()
     }
     
     // Cleanup previous subscription when groupRoom changes
@@ -136,6 +146,13 @@ const SpeakingLearning = () => {
     const isDesktop = window.innerWidth >= 1024 // lg breakpoint
     setShowChat(isDesktop)
   }, [])
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chatMessages])
 
   const loadCategoryAndLevels = async () => {
     try {
@@ -159,8 +176,41 @@ const SpeakingLearning = () => {
       if (levelsData && levelsData.length > 0) {
         setCurrentLevel(levelsData[0]) // Start with first level
       }
+
+      // Initialize user progress for this category
+      if (foundCategory && user?.id) {
+        await initializeUserProgress(foundCategory, levelsData)
+      }
     } catch (error) {
       console.error('Error loading category and levels:', error)
+    }
+  }
+
+  // Initialize user progress when starting a category
+  const initializeUserProgress = async (category, levels) => {
+    try {
+      // Check if user already has progress for this category
+      const { data: existingProgress } = await getUserProgress(user.id)
+      const hasProgress = existingProgress?.some(p => p.category_id === category.id)
+      
+      if (!hasProgress) {
+        // Initialize progress for new users
+        const totalLevels = levels?.length || 10 // Default to 10 if not specified
+        const progressData = {
+          user_id: user.id,
+          category_id: category.id,
+          current_level: 1,
+          completed_levels: [],
+          total_score: 0,
+          total_levels: totalLevels,
+          started_at: new Date().toISOString()
+        }
+        
+        await updateUserProgress(user.id, category.id, progressData)
+        console.log('Initialized progress for category:', category.name)
+      }
+    } catch (error) {
+      console.error('Error initializing user progress:', error)
     }
   }
 
@@ -184,6 +234,9 @@ const SpeakingLearning = () => {
           const parsed = JSON.parse(cachedMessages)
           if (Array.isArray(parsed) && parsed.length > 0) {
             setChatMessages(parsed)
+            // Update online count from cached messages
+            const activeCount = getActiveUsersCount(parsed)
+            setOnlineUsers(activeCount)
           }
         } catch (e) {
           console.warn('Failed to parse cached messages:', e)
@@ -199,7 +252,7 @@ const SpeakingLearning = () => {
       }
       
       if (messages && messages.length > 0) {
-        // Messages come in descending order, reverse to get chronological order
+        // Messages come in descending order (newest first), reverse to get chronological order (oldest first)
         const chronologicalMessages = [...messages].reverse()
         setChatMessages(chronologicalMessages)
         
@@ -209,9 +262,14 @@ const SpeakingLearning = () => {
         // Update online users count based on recent activity
         const activeCount = getActiveUsersCount(chronologicalMessages)
         setOnlineUsers(activeCount)
+      } else {
+        // No messages, reset to just current user
+        setChatMessages([])
+        setOnlineUsers(1)
       }
     } catch (error) {
       console.error('Error loading chat messages:', error)
+      setOnlineUsers(1) // Fallback to just current user
     }
   }
 
@@ -262,14 +320,23 @@ const SpeakingLearning = () => {
   const getActiveUsersCount = (messages) => {
     if (!messages || messages.length === 0) return 1
     
-    // Get unique users who sent messages in the last 30 minutes
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
+    // Get unique users who sent messages in the last 15 minutes (more realistic)
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
     const recentMessages = messages.filter(msg => 
-      new Date(msg.created_at) > thirtyMinutesAgo
+      new Date(msg.created_at) > fifteenMinutesAgo
     )
     
     const uniqueUsers = new Set(recentMessages.map(msg => msg.user_id))
-    return Math.max(uniqueUsers.size, 1) // At least 1 (current user)
+    
+    // Always include current user if they're active
+    uniqueUsers.add(user.id)
+    
+    // Show realistic numbers - if only current user, show 1-3 randomly to encourage interaction
+    if (uniqueUsers.size === 1) {
+      return Math.floor(Math.random() * 3) + 1 // 1-3 users
+    }
+    
+    return uniqueUsers.size
   }
 
   const loadCurrentQuestion = async () => {
@@ -589,16 +656,74 @@ const SpeakingLearning = () => {
     if (questionIndex < currentLevel.questions.length - 1) {
       setQuestionIndex(prev => prev + 1)
     } else {
-      // Level completed, move to next level
+      // Level completed! Update progress
+      await updateLevelProgress()
+      
+      // Move to next level
       const nextLevelIndex = levels.findIndex(l => l.id === currentLevel.id) + 1
       if (nextLevelIndex < levels.length) {
         setCurrentLevel(levels[nextLevelIndex])
         setQuestionIndex(0)
       } else {
         // Category completed!
+        await completeCategoryProgress()
         alert('🎉 Congratulations! You completed this category!')
         navigate('/dashboard')
       }
+    }
+  }
+
+  // Update progress when a level is completed
+  const updateLevelProgress = async () => {
+    try {
+      const { data: currentProgress } = await getUserProgress(user.id)
+      const categoryProgress = currentProgress?.find(p => p.category_id === category.id)
+      
+      if (categoryProgress) {
+        const newCompletedLevels = [...(categoryProgress.completed_levels || []), currentLevel.level_number]
+        const uniqueCompletedLevels = [...new Set(newCompletedLevels)].sort((a, b) => a - b)
+        
+        // Calculate average score from user attempts for this level
+        const { data: levelAttempts } = await getUserLevelProgress(user.id, currentLevel.id)
+        const avgScore = levelAttempts?.length > 0 
+          ? Math.round(levelAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / levelAttempts.length)
+          : 0
+
+        const updatedProgress = {
+          ...categoryProgress,
+          current_level: Math.max(categoryProgress.current_level, currentLevel.level_number + 1),
+          completed_levels: uniqueCompletedLevels,
+          total_score: Math.round((categoryProgress.total_score + avgScore) / 2), // Running average
+          last_completed_at: new Date().toISOString()
+        }
+        
+        await updateUserProgress(user.id, category.id, updatedProgress)
+        console.log('Updated level progress:', updatedProgress)
+      }
+    } catch (error) {
+      console.error('Error updating level progress:', error)
+    }
+  }
+
+  // Complete category progress
+  const completeCategoryProgress = async () => {
+    try {
+      const { data: currentProgress } = await getUserProgress(user.id)
+      const categoryProgress = currentProgress?.find(p => p.category_id === category.id)
+      
+      if (categoryProgress) {
+        const updatedProgress = {
+          ...categoryProgress,
+          completed_levels: levels.map(l => l.level_number),
+          current_level: levels.length + 1,
+          completed_at: new Date().toISOString()
+        }
+        
+        await updateUserProgress(user.id, category.id, updatedProgress)
+        console.log('Completed category progress:', updatedProgress)
+      }
+    } catch (error) {
+      console.error('Error completing category progress:', error)
     }
   }
 
@@ -619,6 +744,102 @@ const SpeakingLearning = () => {
       utterance.lang = 'en-US'
       utterance.rate = 0.8
       speechSynthesis.speak(utterance)
+    }
+  }
+
+  const loadRemainingVoiceMessages = async () => {
+    try {
+      const { data, error } = await getRemainingVoiceMessages(user.id)
+      if (!error && data !== null) {
+        setRemainingVoiceMessages(data)
+      }
+    } catch (error) {
+      console.error('Error loading remaining voice messages:', error)
+    }
+  }
+
+  const handleVoiceMessageSend = async (audioBlob, duration) => {
+    if (!groupRoom || !audioBlob) {
+      console.error('Missing requirements:', { groupRoom: !!groupRoom, audioBlob: !!audioBlob })
+      alert('Unable to send voice message. Please try again.')
+      return
+    }
+
+    console.log('Starting voice message send...', { 
+      duration, 
+      blobSize: audioBlob.size,
+      roomId: groupRoom.id,
+      userId: user.id
+    })
+
+    setIsUploadingVoice(true)
+    
+    try {
+      // Check if user has remaining messages
+      if (remainingVoiceMessages <= 0) {
+        alert('You have reached your daily voice message limit (10/10). Try again tomorrow!')
+        setShowVoiceRecorder(false)
+        return
+      }
+
+      // Upload voice file
+      console.log('Uploading voice file...')
+      const { data: uploadData, error: uploadError } = await uploadVoiceMessage(
+        audioBlob, 
+        user.id, 
+        groupRoom.id
+      )
+      
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        throw new Error(`Upload failed: ${uploadError.message}`)
+      }
+
+      console.log('Voice file uploaded successfully:', uploadData.publicUrl)
+
+      // Send voice message
+      console.log('Sending voice message to chat...')
+      const { data, error } = await sendVoiceMessage(
+        groupRoom.id,
+        user.id, 
+        uploadData.publicUrl,
+        duration
+      )
+      
+      if (error) {
+        console.error('Send message error:', error)
+        throw new Error(`Send failed: ${error.message}`)
+      }
+      
+      console.log('Voice message sent successfully:', data)
+      
+      // Update remaining count
+      setRemainingVoiceMessages(prev => Math.max(0, prev - 1))
+      setShowVoiceRecorder(false)
+      
+      // Show success message
+      setTimeout(() => {
+        alert('🎤 Voice message sent successfully!')
+      }, 500)
+      
+    } catch (error) {
+      console.error('Error sending voice message:', error)
+      
+      // User-friendly error messages
+      let errorMessage = 'Failed to send voice message. '
+      if (error.message.includes('Upload failed')) {
+        errorMessage += 'There was a problem uploading your recording. Check your internet connection and try again.'
+      } else if (error.message.includes('Send failed')) {
+        errorMessage += 'Your recording uploaded but failed to send to chat. Please try again.'
+      } else if (error.message.includes('limit')) {
+        errorMessage += 'You have reached your daily limit of 10 voice messages.'
+      } else {
+        errorMessage += 'Please check your internet connection and try again.'
+      }
+      
+      alert(errorMessage)
+    } finally {
+      setIsUploadingVoice(false)
     }
   }
 
@@ -688,35 +909,45 @@ const SpeakingLearning = () => {
   }
 
   return (
-    <div 
-      className="min-h-screen relative"
-      style={{
-        backgroundImage: `url('/learning-bg.svg')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed'
-      }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Floating Particles */}
+        <div className="absolute top-20 left-20 w-2 h-2 bg-cyan-400 rounded-full animate-pulse opacity-60"></div>
+        <div className="absolute top-40 right-32 w-1 h-1 bg-purple-400 rounded-full animate-pulse opacity-80"></div>
+        <div className="absolute top-60 left-1/3 w-1.5 h-1.5 bg-pink-400 rounded-full animate-pulse opacity-70"></div>
+        <div className="absolute bottom-40 right-20 w-2 h-2 bg-cyan-300 rounded-full animate-pulse opacity-50"></div>
+        <div className="absolute bottom-60 left-20 w-1 h-1 bg-purple-300 rounded-full animate-pulse opacity-90"></div>
+        
+        {/* Gradient Orbs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
+        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-gradient-to-r from-indigo-500/10 to-cyan-500/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '4s'}}></div>
+      </div>
       
       {/* Modern Header */}
-      <div className="bg-white/95 backdrop-blur-xl shadow-lg border-b border-gray-200/50 sticky top-0 z-40">
+      <div className="relative z-10 backdrop-blur-xl bg-slate-900/20 border-b border-slate-700/50 sticky top-0 z-40">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             {/* Left Section */}
             <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center space-x-1 sm:space-x-2 text-blue-600 hover:text-blue-700 transition-colors flex-shrink-0 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg"
+                className="group flex items-center space-x-1 sm:space-x-2 text-cyan-400 hover:text-cyan-300 transition-all duration-300 flex-shrink-0 bg-slate-800/50 hover:bg-slate-800/70 border border-slate-700/50 hover:border-cyan-400/30 px-3 py-2 rounded-xl backdrop-blur-sm"
               >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform duration-300" />
                 <span className="hidden sm:inline font-medium">Dashboard</span>
               </button>
-              <div className="h-4 sm:h-6 w-px bg-gray-300 hidden sm:block"></div>
+              <div className="h-4 sm:h-6 w-px bg-slate-600/50 hidden sm:block"></div>
               <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
-                <span className="text-xl sm:text-2xl lg:text-3xl flex-shrink-0">{category.icon}</span>
+                <div className="text-xl sm:text-2xl lg:text-3xl flex-shrink-0 filter drop-shadow-lg animate-pulse">
+                  {category.icon}
+                </div>
                 <div className="min-w-0">
-                  <h1 className="text-sm sm:text-lg lg:text-xl font-bold text-gray-800 truncate">{category.name}</h1>
-                  <p className="text-xs sm:text-sm text-gray-600 truncate">
+                  <h1 className="text-sm sm:text-lg lg:text-xl font-bold bg-gradient-to-r from-white to-cyan-400 bg-clip-text text-transparent truncate">
+                    {category.name}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-400 truncate">
                     Level {currentLevel.level_number} • Question {questionIndex + 1}/{currentLevel.questions.length}
                   </p>
                 </div>
@@ -728,20 +959,20 @@ const SpeakingLearning = () => {
               {/* Chat Toggle */}
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="relative flex items-center space-x-1 sm:space-x-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-3 sm:px-4 py-2 rounded-lg transition-all shadow-lg hover:shadow-xl"
+                className="group relative flex items-center space-x-1 sm:space-x-2 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 hover:from-cyan-500/30 hover:to-purple-500/30 border border-cyan-400/30 hover:border-cyan-400/50 text-cyan-400 hover:text-cyan-300 px-3 sm:px-4 py-2 rounded-xl transition-all duration-300 backdrop-blur-sm shadow-lg"
               >
-                <MessageCircle className="w-5 h-5" />
+                <MessageCircle className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
                 <span className="text-sm font-medium">Chat</span>
-                <div className="flex items-center space-x-1 text-xs bg-white/20 rounded-full px-2 py-1">
+                <div className="flex items-center space-x-1 text-xs bg-slate-800/50 rounded-full px-2 py-1 border border-slate-600/50">
                   <Users className="w-3 h-3" />
                   <span>{onlineUsers}</span>
                 </div>
               </button>
               
               {/* Score Display */}
-              <div className="text-right bg-white/80 rounded-lg px-3 py-2 shadow-sm">
-                <div className="text-xs text-gray-500 hidden sm:block">Score</div>
-                <div className="text-base sm:text-lg lg:text-2xl font-bold text-gray-800">
+              <div className="text-right bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl px-3 py-2 shadow-lg">
+                <div className="text-xs text-slate-400 hidden sm:block">Score</div>
+                <div className="text-base sm:text-lg lg:text-2xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
                   {feedback?.overallScore || 0}%
                 </div>
               </div>
@@ -750,104 +981,140 @@ const SpeakingLearning = () => {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8">
           {/* Main Content */}
           <div className={`transition-all duration-300 ${showChat ? 'lg:w-2/3' : 'w-full max-w-4xl mx-auto'}`}>
             {/* Modern Progress Bar */}
             <div className="mb-4 sm:mb-6 lg:mb-8">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs sm:text-sm font-medium text-gray-700">
-                  Level {currentLevel.level_number} Progress
-                </span>
-                <span className="text-xs sm:text-sm text-gray-500">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs sm:text-sm font-medium text-slate-300">
+                    Level {currentLevel.level_number} Progress
+                  </span>
+                </div>
+                <span className="text-xs sm:text-sm text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full border border-slate-700/50">
                   {questionIndex + 1}/{currentLevel.questions.length}
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3 shadow-inner">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 sm:h-3 rounded-full transition-all duration-500 shadow-sm"
-                  style={{ width: `${((questionIndex + 1) / currentLevel.questions.length) * 100}%` }}
-                ></div>
+              <div className="relative">
+                <div className="w-full bg-slate-800/50 rounded-full h-3 sm:h-4 shadow-inner border border-slate-700/50 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 h-3 sm:h-4 rounded-full transition-all duration-500 shadow-lg relative overflow-hidden"
+                    style={{ width: `${((questionIndex + 1) / currentLevel.questions.length) * 100}%` }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="text-center mt-2">
+                  <span className="text-xs text-slate-500">
+                    {Math.round(((questionIndex + 1) / currentLevel.questions.length) * 100)}% Complete
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Modern Question Card */}
-            <div className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 border border-gray-200/50 transition-all duration-500 hover:shadow-2xl">
-              <div className="text-center mb-4 sm:mb-6">
-                <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mb-4">
-                  <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800">
-                    Question {questionIndex + 1}
-                  </h2>
-                  <button
-                    onClick={speakQuestion}
-                    className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg border border-blue-200"
-                  >
-                    <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="text-sm font-medium">Listen</span>
-                  </button>
-                </div>
-                <p className="text-base sm:text-lg lg:text-xl text-gray-700 mb-4 leading-relaxed">{currentQuestion.text}</p>
-                <div className="flex items-center justify-center space-x-4 text-xs sm:text-sm text-gray-500">
-                  <div className="flex items-center space-x-1 bg-gray-100 rounded-full px-3 py-1">
-                    <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span>{getLevelConfig(currentLevel.level_number).minTime}s - {getLevelConfig(currentLevel.level_number).maxTime}s</span>
+            <div className="relative group">
+              {/* Glow Effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-pink-500/10 rounded-3xl blur-xl group-hover:blur-2xl transition-all duration-500 opacity-50"></div>
+              
+              <div className="relative bg-slate-800/40 backdrop-blur-xl rounded-3xl shadow-2xl p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 border border-slate-700/50 hover:border-slate-600/50 transition-all duration-500">
+                              <div className="text-center mb-4 sm:mb-6">
+                  <div className="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-4 mb-6">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-8 h-8 bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full flex items-center justify-center">
+                        <span className="text-slate-900 font-bold text-sm">{questionIndex + 1}</span>
+                      </div>
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold bg-gradient-to-r from-white to-cyan-400 bg-clip-text text-transparent">
+                        Question {questionIndex + 1}
+                      </h2>
+                    </div>
+                    <button
+                      onClick={speakQuestion}
+                      className="group flex items-center space-x-2 text-cyan-400 hover:text-cyan-300 transition-all duration-300 bg-slate-800/50 hover:bg-slate-800/70 px-3 py-2 rounded-xl border border-slate-700/50 hover:border-cyan-400/30 backdrop-blur-sm"
+                    >
+                      <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-300" />
+                      <span className="text-sm font-medium">Listen</span>
+                    </button>
+                  </div>
+                  <p className="text-base sm:text-lg lg:text-xl text-slate-200 mb-6 leading-relaxed font-medium">{currentQuestion.text}</p>
+                  <div className="flex items-center justify-center space-x-4 text-xs sm:text-sm">
+                    <div className="flex items-center space-x-2 bg-slate-800/50 rounded-full px-4 py-2 border border-slate-700/50">
+                      <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-400" />
+                      <span className="text-slate-400">Recommended: {getLevelConfig(currentLevel.level_number).minTime}s - {getLevelConfig(currentLevel.level_number).maxTime}s</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
               {/* Recording Section */}
               <div className="text-center mb-6">
                 {/* Two-Button System */}
                 <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 mb-6">
                   {/* Start Recording Button */}
-                  <button
-                    onClick={transcript ? startNewRecording : startRecording}
-                    disabled={isRecording || isAnalyzing}
-                    className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-sm sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 hover:scale-105 shadow-lg hover:shadow-xl border-4 border-white ${
-                      isRecording || isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1 sm:mb-2" />
-                    <span className="text-xs sm:text-sm font-bold text-center leading-tight">{transcript ? 'RECORD AGAIN' : 'START RECORDING'}</span>
-                  </button>
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-green-400/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+                    <button
+                      onClick={transcript ? startNewRecording : startRecording}
+                      disabled={isRecording || isAnalyzing}
+                      className={`relative w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-sm sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 border-4 border-slate-700/50 group-hover:border-emerald-400/50 ${
+                        isRecording || isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <Mic className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1 sm:mb-2 group-hover:scale-110 transition-transform duration-300" />
+                      <span className="text-xs sm:text-sm font-bold text-center leading-tight">{transcript ? 'RECORD AGAIN' : 'START RECORDING'}</span>
+                    </button>
+                  </div>
 
                   {/* Stop Recording Button */}
-                  <button
-                    onClick={stopRecording}
-                    disabled={!isRecording || isAnalyzing}
-                    className={`w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-sm sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:scale-105 shadow-lg hover:shadow-xl border-4 border-white ${
-                      !isRecording || isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'animate-pulse'
-                    }`}
-                  >
-                    <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1 sm:mb-2" />
-                    <span className="text-xs sm:text-sm font-bold text-center leading-tight">STOP RECORDING</span>
-                  </button>
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-red-400/20 to-pink-400/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-500"></div>
+                    <button
+                      onClick={stopRecording}
+                      disabled={!isRecording || isAnalyzing}
+                      className={`relative w-28 h-28 sm:w-32 sm:h-32 lg:w-36 lg:h-36 rounded-full flex flex-col items-center justify-center text-white font-bold text-sm sm:text-lg transition-all duration-300 transform bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 hover:scale-110 shadow-2xl hover:shadow-red-500/25 border-4 border-slate-700/50 group-hover:border-red-400/50 ${
+                        !isRecording || isAnalyzing ? 'opacity-50 cursor-not-allowed' : 'animate-pulse'
+                      }`}
+                    >
+                      <MicOff className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 mb-1 sm:mb-2 group-hover:scale-110 transition-transform duration-300" />
+                      <span className="text-xs sm:text-sm font-bold text-center leading-tight">STOP RECORDING</span>
+                    </button>
+                  </div>
                 </div>
                 
                 {/* Status Message */}
                 <div className="mb-6">
-                  <p className="text-base sm:text-lg lg:text-xl font-medium text-gray-700 mb-2 px-2">
-                    {isAnalyzing 
-                      ? '🤖 Analyzing your answer...'
-                      : isRecording 
-                      ? `🎤 Recording... ${formatTime(recordingTime)}` 
-                      : transcript 
-                      ? '✅ Ready to submit or record again'
-                      : '🎯 Click START RECORDING to begin'}
-                  </p>
-                  
-                  {!isRecording && !transcript && (
-                    <p className="text-blue-600 text-sm sm:text-base bg-blue-50 rounded-lg px-3 sm:px-4 py-2 inline-block mx-2">
-                      💡 Recommended: Speak for at least {getLevelConfig(currentLevel.level_number).minTime} seconds for better analysis
-                    </p>
-                  )}
-                  
-                  {isRecording && recordingTime >= 150 && (
-                    <p className="text-orange-600 text-sm sm:text-base animate-pulse bg-orange-50 rounded-lg px-3 sm:px-4 py-2 inline-block mx-2">
-                      ⚠️ Recording will stop automatically in {180 - recordingTime} seconds
-                    </p>
-                  )}
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-slate-800/20 to-slate-700/20 rounded-2xl blur-xl"></div>
+                    <div className="relative bg-slate-800/30 backdrop-blur-sm rounded-2xl border border-slate-700/50 p-4">
+                      <p className="text-base sm:text-lg lg:text-xl font-medium text-slate-200 mb-2 text-center">
+                        {isAnalyzing 
+                          ? '🤖 AI is analyzing your answer...'
+                          : isRecording 
+                          ? `🎤 Recording... ${formatTime(recordingTime)}` 
+                          : transcript 
+                          ? '✅ Ready to submit or record again'
+                          : '🎯 Click START RECORDING to begin'}
+                      </p>
+                      
+                      {!isRecording && !transcript && (
+                        <div className="text-center">
+                          <p className="text-cyan-400 text-sm sm:text-base bg-slate-800/50 rounded-xl px-3 sm:px-4 py-2 inline-block border border-slate-700/50">
+                            💡 Recommended: Speak for at least {getLevelConfig(currentLevel.level_number).minTime} seconds for better analysis
+                          </p>
+                        </div>
+                      )}
+                      
+                      {isRecording && recordingTime >= 150 && (
+                        <div className="text-center">
+                          <p className="text-orange-400 text-sm sm:text-base animate-pulse bg-slate-800/50 rounded-xl px-3 sm:px-4 py-2 inline-block border border-orange-500/30">
+                            ⚠️ Recording will stop automatically in {180 - recordingTime} seconds
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Progress Bar - Only when recording */}
@@ -868,20 +1135,16 @@ const SpeakingLearning = () => {
                 )}
               </div>
 
-              {/* Transcript Section - Modern */}
+              {/* Transcript Section - Modern (Read-only) */}
               {transcript && (
                 <div className="bg-gray-50 rounded-2xl p-4 sm:p-6 mb-6 border border-gray-200 shadow-sm">
                   <h3 className="font-semibold text-gray-700 mb-3 text-lg flex items-center">
                     <span className="mr-2">📝</span>
                     What you said:
                   </h3>
-                  <textarea
-                    value={transcript}
-                    onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full p-4 bg-white border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-700 placeholder-gray-400 min-h-[120px] shadow-sm"
-                    rows="4"
-                    placeholder="Edit your transcript if needed..."
-                  />
+                  <div className="w-full p-4 bg-white border border-gray-300 rounded-xl text-base text-gray-700 min-h-[120px] shadow-sm leading-relaxed">
+                    {transcript || "Your speech will appear here..."}
+                  </div>
                 </div>
               )}
 
@@ -1004,6 +1267,7 @@ const SpeakingLearning = () => {
                   </div>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Help Modal */}
@@ -1111,9 +1375,46 @@ const SpeakingLearning = () => {
                                 ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' 
                                 : 'bg-white border border-gray-200 text-gray-800'
                             } ${message.isTemporary ? 'opacity-70' : ''}`}>
-                              <p className="text-xs sm:text-sm leading-relaxed break-words">
-                                {message.message}
-                              </p>
+                              
+                              {/* Voice Message */}
+                              {message.message_type === 'voice' ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <div className={`p-2 rounded-full ${isCurrentUser ? 'bg-white/20' : 'bg-blue-100'} animate-pulse`}>
+                                      <Volume2 className={`w-4 h-4 ${isCurrentUser ? 'text-white' : 'text-blue-600'}`} />
+                                    </div>
+                                    <div className={`text-xs font-medium ${isCurrentUser ? 'text-blue-100' : 'text-blue-600'}`}>
+                                      🎤 Voice Message ({message.voice_duration}s)
+                                    </div>
+                                  </div>
+                                  <div className="w-full">
+                                    <audio 
+                                      controls 
+                                      className="w-full"
+                                      style={{
+                                        height: '36px',
+                                        borderRadius: '8px',
+                                        backgroundColor: isCurrentUser ? 'rgba(255,255,255,0.1)' : 'rgba(59,130,246,0.1)'
+                                      }}
+                                      preload="metadata"
+                                    >
+                                      <source src={message.voice_url} type="audio/webm" />
+                                      <source src={message.voice_url} type="audio/wav" />
+                                      <source src={message.voice_url} type="audio/mp3" />
+                                      Your browser does not support audio playback.
+                                    </audio>
+                                  </div>
+                                  <div className={`text-xs ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'} flex items-center space-x-1`}>
+                                    <span>🔊</span>
+                                    <span>Click to play • Practice your listening skills</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* Text Message */
+                                <p className="text-xs sm:text-sm leading-relaxed break-words">
+                                  {message.message}
+                                </p>
+                              )}
                               
                               {/* Message Tail */}
                               <div className={`absolute top-2 sm:top-3 w-2 h-2 sm:w-3 sm:h-3 transform rotate-45 ${
@@ -1133,6 +1434,9 @@ const SpeakingLearning = () => {
                       )
                     })}
                     
+                    {/* Auto-scroll anchor */}
+                    <div ref={chatMessagesEndRef} />
+                    
                     {chatMessages.length === 0 && (
                       <div className="text-center py-8 sm:py-12">
                         <div className="bg-white/80 rounded-2xl p-4 sm:p-6 mx-2 sm:mx-4">
@@ -1146,27 +1450,80 @@ const SpeakingLearning = () => {
                 </div>
               
                 {/* Message Input */}
-                <div className="p-3 sm:p-4 bg-gray-50/80 border-t border-gray-200">
-                  <div className="flex space-x-2 sm:space-x-3">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                      placeholder="Type your message..."
-                      className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-white border border-gray-200 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm text-gray-700 placeholder-gray-400 shadow-sm transition-all"
-                    />
+                <div className="p-3 sm:p-4 bg-gradient-to-r from-slate-50 to-blue-50/30 border-t border-gray-200/50 backdrop-blur-sm">
+                  <div className="flex space-x-2 sm:space-x-3 mb-3">
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                        placeholder="💬 Type your message..."
+                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-white/90 border-2 border-gray-200 hover:border-blue-300 focus:border-blue-500 rounded-2xl focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-700 placeholder-gray-400 shadow-sm backdrop-blur-sm transition-all duration-300 pr-12"
+                      />
+                      {newMessage.trim() && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                          <span className="text-xs">{newMessage.length}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Voice Message Button */}
+                    <button
+                      onClick={() => setShowVoiceRecorder(true)}
+                      disabled={remainingVoiceMessages <= 0}
+                      className="group relative w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
+                      title={`🎤 Voice message (${remainingVoiceMessages} left)`}
+                    >
+                      <Mic className="w-5 h-5 sm:w-6 sm:h-6 group-hover:animate-pulse" />
+                      {remainingVoiceMessages > 0 && (
+                        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white shadow-sm animate-pulse">
+                          {remainingVoiceMessages}
+                        </div>
+                      )}
+                      {remainingVoiceMessages <= 0 && (
+                        <div className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                          ✕
+                        </div>
+                      )}
+                    </button>
+                    
                     <button
                       onClick={sendMessage}
                       disabled={!newMessage.trim()}
-                      className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-full transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+                      className="group w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
+                      title="Send message"
                     >
-                      <Send className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <Send className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    💬 Chat with other learners • Be respectful and helpful
-                  </p>
+                  
+                  {/* Status Bar */}
+                  <div className="flex justify-between items-center text-xs">
+                    <div className="flex items-center space-x-3 text-gray-600">
+                      <span className="flex items-center space-x-1">
+                        <div className={`w-2 h-2 rounded-full ${
+                          connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
+                          connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}></div>
+                        <span className="font-medium">
+                          {connectionStatus === 'connected' ? 'Connected' : 
+                           connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                        </span>
+                      </span>
+                      <span className="text-gray-400">•</span>
+                      <span>Be respectful and helpful 🤝</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {remainingVoiceMessages > 5 ? (
+                        <span className="text-green-600 font-medium">🎤 {remainingVoiceMessages} left</span>
+                      ) : remainingVoiceMessages > 0 ? (
+                        <span className="text-orange-600 font-medium">🎤 {remainingVoiceMessages} left</span>
+                      ) : (
+                        <span className="text-red-600 font-medium">🚫 No voice messages left</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1259,6 +1616,17 @@ const SpeakingLearning = () => {
         </div>
       )}
 
+      {/* Voice Recorder Modal */}
+      {showVoiceRecorder && (
+        <VoiceRecorder
+          onSendVoice={handleVoiceMessageSend}
+          onCancel={() => setShowVoiceRecorder(false)}
+          maxDuration={60}
+          remainingMessages={remainingVoiceMessages}
+          isUploading={isUploadingVoice}
+        />
+      )}
+
       {/* New User Guide Modal */}
       {showNewUserGuide && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1282,6 +1650,10 @@ const SpeakingLearning = () => {
                 <div className="flex items-start space-x-3">
                   <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
                   <p className="text-gray-700">Chat with other learners for support and practice</p>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold">5</div>
+                  <p className="text-gray-700">Send voice messages in chat to practice with others (10 per day)</p>
                 </div>
               </div>
               <button

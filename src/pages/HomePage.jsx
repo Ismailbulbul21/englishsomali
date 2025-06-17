@@ -126,6 +126,39 @@ const HomePage = () => {
             Maxay HadalHub Kaa Gaarka Tahay?
           </h3>
           
+          {/* Speech Recognition Improvements Notice */}
+          <div className="bg-green-100 border border-green-300 rounded-xl p-4 sm:p-6 mb-8 mx-2 sm:mx-0">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-sm">NEW</span>
+              </div>
+              <h4 className="text-lg font-semibold text-green-800">Enhanced Speech Recognition for Somali Speakers!</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-green-700 mb-2">
+                  <strong>🎯 Somali-Optimized:</strong> Better recognition of Somali names, places, and accent patterns
+                </p>
+                <p className="text-green-700 mb-2">
+                  <strong>⚡ Speed Adaptive:</strong> Works with slow, normal, or fast speaking speeds
+                </p>
+              </div>
+              <div>
+                <p className="text-green-700 mb-2">
+                  <strong>🔧 Auto-Correction:</strong> Automatically fixes common pronunciation errors
+                </p>
+                <p className="text-green-700 mb-2">
+                  <strong>⚙️ Customizable:</strong> Adjust settings for your speaking style
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 p-3 bg-green-50 rounded-lg">
+              <p className="text-green-600 text-xs">
+                <strong>Somali / Af-Soomaali:</strong> Celcelinta codka waa la hagaajiyay dadka Soomaalida - hadda wuu si fiican u shaqeynayaa magacyada, meelaha, iyo codka Soomaalida.
+              </p>
+            </div>
+          </div>
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             <div className="bg-white p-4 sm:p-6 rounded-xl shadow-lg text-center">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">

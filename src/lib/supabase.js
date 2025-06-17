@@ -48,10 +48,7 @@ export const getCategories = async () => {
 export const getUserProgress = async (userId) => {
   const { data, error } = await supabase
     .from('user_progress')
-    .select(`
-      *,
-      categories (*)
-    `)
+    .select('user_id, category_id, current_level, completed_levels, total_score, total_levels, started_at')
     .eq('user_id', userId)
   return { data, error }
 }
@@ -455,6 +452,129 @@ export const sendChatMessage = async (roomId, userId, message, messageType = 'te
       metadata
     }])
     .select()
+  return { data, error }
+}
+
+// Voice message functions
+export const checkVoiceMessageLimit = async (userId) => {
+  const { data, error } = await supabase
+    .rpc('check_voice_message_limit', { user_uuid: userId })
+  return { data, error }
+}
+
+export const getRemainingVoiceMessages = async (userId) => {
+  const { data, error } = await supabase
+    .rpc('get_remaining_voice_messages', { user_uuid: userId })
+  return { data, error }
+}
+
+export const uploadVoiceMessage = async (file, userId, roomId) => {
+  console.log('uploadVoiceMessage called with:', { 
+    fileSize: file.size, 
+    fileType: file.type, 
+    userId, 
+    roomId 
+  })
+  
+  if (!file || file.size === 0) {
+    const error = new Error('Invalid or empty audio file')
+    console.error('Upload error:', error)
+    return { data: null, error }
+  }
+
+  const fileName = `voice_${Date.now()}_${Math.random().toString(36).substring(7)}.webm`
+  const filePath = `voice_messages/${userId}/${fileName}`
+  
+  console.log('Uploading to path:', filePath)
+  
+  try {
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('chat-files')
+      .upload(filePath, file, {
+        contentType: file.type || 'audio/webm',
+        upsert: false
+      })
+    
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError)
+      return { data: null, error: uploadError }
+    }
+    
+    console.log('Upload successful:', uploadData)
+    
+    const { data: urlData } = supabase.storage
+      .from('chat-files')
+      .getPublicUrl(filePath)
+    
+    console.log('Public URL generated:', urlData.publicUrl)
+    
+    return { data: { ...uploadData, publicUrl: urlData.publicUrl }, error: null }
+  } catch (error) {
+    console.error('Unexpected upload error:', error)
+    return { data: null, error }
+  }
+}
+
+export const sendVoiceMessage = async (roomId, userId, voiceUrl, duration) => {
+  console.log('sendVoiceMessage called with:', { roomId, userId, voiceUrl, duration })
+  
+  try {
+    // Check if user can send voice message
+    console.log('Checking voice message limit...')
+    const { data: canSend, error: limitError } = await checkVoiceMessageLimit(userId)
+    
+    if (limitError) {
+      console.error('Limit check error:', limitError)
+      return { 
+        data: null, 
+        error: limitError
+      }
+    }
+    
+    if (!canSend) {
+      const error = new Error('Daily voice message limit reached (10 messages)')
+      console.error('Limit reached:', error)
+      return { 
+        data: null, 
+        error
+      }
+    }
+    
+    console.log('Limit check passed, inserting message...')
+    
+    const messageData = {
+      room_id: roomId,
+      user_id: userId,
+      message: `Voice message (${duration}s)`,
+      message_type: 'voice',
+      voice_url: voiceUrl,
+      voice_duration: duration
+    }
+    
+    console.log('Inserting message data:', messageData)
+    
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert([messageData])
+      .select()
+    
+    if (error) {
+      console.error('Database insert error:', error)
+      return { data: null, error }
+    }
+    
+    console.log('Voice message inserted successfully:', data)
+    return { data, error: null }
+    
+  } catch (error) {
+    console.error('Unexpected sendVoiceMessage error:', error)
+    return { data: null, error }
+  }
+}
+
+export const cleanupOldMessages = async () => {
+  const { data, error } = await supabase
+    .rpc('cleanup_old_messages')
   return { data, error }
 }
 
