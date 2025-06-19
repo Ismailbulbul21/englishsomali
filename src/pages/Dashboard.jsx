@@ -138,6 +138,23 @@ const Dashboard = () => {
     return translations[categoryName] || categoryName
   }
 
+  // Somali descriptions for categories
+  const getSomaliDescription = (categoryName) => {
+    const descriptions = {
+      'Daily Conversation': 'Ku guulayso hadallada maalinlaha ah ee Ingiriiska. Hadal yaryar ilaa wax iibsasho, dhis kalsoonidaada isgaarsiinta maalinlaha ah.',
+      'Job Interview English': 'U diyaargarow waraysiga shaqada oo kalsooni leh. Baro erayada xirfadeed iyo su\'aalaha caadiga ah ee waraysiga.',
+      'School English': 'Ingiriiska muhiimka ah ee guusha tacliinta. Habboon ardayda iyo kuwa dib u bilaabaya waxbarashada.',
+      'Travel English': 'Ku safar adduunka oo kalsooni leh. Baro odhaahda garoonka diyaaradaha, huteellada, makhaayadaha iyo meelaha dalxiiska.',
+      'Business English': 'Xirfadaha isgaarsiinta xirfadeed ee goobta shaqada. Iimaylada, shirarka, bandhigyadda, iyo isdhexgalka.',
+      'Basic Greetings': 'Salaamaha aasaasiga ah ee Ingiriiska. Bilow safarkaga luuqadda salaamaha iyo hadallada gaagaaban.',
+      'Workplace Communication': 'Isgaarsiinta heer sare ah ee goobta shaqada. Wada hadallada xirfadeed iyo iskaashiga kooxda.',
+      'Academic English': 'Ingiriiska tacliinta sare ee guusha jaamacadda. Qorista, akhrinta, iyo bandhigyadda cilmiga.',
+      'Social Situations': 'Ku guulayso xaaladaha bulsheed ee kala duwan. Xaflado, kulan saaxiibo, iyo dhacdooyinka bulsheed.',
+      'Professional Meetings': 'Shirarka xirfadeed oo heer sare ah. Hoggaaminta shirarka, soo jeedinta, iyo go\'aamada gaarista.'
+    }
+    return descriptions[categoryName] || 'Horumarinta xirfadahaaga Ingiriiska.'
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-white flex items-center justify-center">
@@ -151,18 +168,37 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-white relative overflow-hidden">
-      {/* Optimized Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Simplified geometric shapes */}
-        <div className="absolute top-10 left-10 w-1 h-1 bg-white rounded-full opacity-30"></div>
-        <div className="absolute top-20 right-20 w-2 h-2 bg-gray-400 rounded-full opacity-20"></div>
-        <div className="absolute bottom-20 left-20 w-1.5 h-1.5 bg-white rounded-full opacity-25"></div>
-        <div className="absolute bottom-10 right-10 w-1 h-1 bg-gray-300 rounded-full opacity-35"></div>
+    <div className="min-h-screen relative overflow-hidden" style={{
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%)',
+    }}>
+      {/* Educational Background Pattern */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
+        {/* English Learning Elements */}
+        <div className="absolute top-20 left-20 text-6xl text-white/20 font-bold transform rotate-12">ABC</div>
+        <div className="absolute top-40 right-32 text-4xl text-white/15 font-bold transform -rotate-12">HELLO</div>
+        <div className="absolute bottom-40 left-16 text-5xl text-white/20 font-bold transform rotate-45">📚</div>
+        <div className="absolute bottom-20 right-20 text-4xl text-white/15 font-bold transform -rotate-45">LEARN</div>
+        <div className="absolute top-1/2 left-1/4 text-3xl text-white/10 font-bold transform rotate-12">SPEAK</div>
+        <div className="absolute top-1/3 right-1/4 text-3xl text-white/10 font-bold transform -rotate-12">STUDY</div>
         
-        {/* Single gradient orb for performance */}
-        <div className="absolute top-1/3 right-1/3 w-96 h-96 bg-gradient-to-r from-white/5 to-gray-500/5 rounded-full blur-3xl"></div>
+        {/* Floating Educational Icons */}
+        <div className="absolute top-32 left-1/3 text-4xl text-white/15 animate-bounce" style={{animationDelay: '0s'}}>🎓</div>
+        <div className="absolute top-60 right-1/3 text-3xl text-white/15 animate-bounce" style={{animationDelay: '1s'}}>💡</div>
+        <div className="absolute bottom-60 left-1/2 text-4xl text-white/15 animate-bounce" style={{animationDelay: '2s'}}>🌟</div>
+        <div className="absolute top-3/4 right-1/2 text-3xl text-white/15 animate-bounce" style={{animationDelay: '3s'}}>🚀</div>
+        
+        {/* Geometric Learning Shapes */}
+        <div className="absolute top-16 right-16 w-20 h-20 border-4 border-white/10 rounded-full animate-pulse"></div>
+        <div className="absolute bottom-32 left-32 w-16 h-16 border-4 border-white/10 rotate-45 animate-pulse" style={{animationDelay: '1s'}}></div>
+        <div className="absolute top-1/2 right-8 w-12 h-12 bg-white/5 rounded-full animate-pulse" style={{animationDelay: '2s'}}></div>
+        
+        {/* Colorful Gradient Orbs */}
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-gradient-to-r from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse" style={{animationDelay: '3s'}}></div>
       </div>
+      
+      {/* Overlay for better text readability */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md"></div>
 
       {/* Header */}
       <header className="relative z-10 backdrop-blur-sm bg-black/20 border-b border-gray-700/30">
@@ -233,10 +269,10 @@ const Dashboard = () => {
         {/* Quick Welcome */}
         <div className="text-center mb-6 sm:mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent mb-2">
-            Choose Your Learning Path
+            Dooro Jidkaaga Waxbarashada
           </h2>
           <p className="text-gray-400 text-sm sm:text-base">
-            Select a category to start your English learning journey
+            Dooro qaybta aad ku bilaabi doonto safarkaga barashada Ingiriiska
           </p>
         </div>
 
@@ -255,7 +291,7 @@ const Dashboard = () => {
                   <div className="absolute inset-0 bg-white/5 rounded-2xl blur-xl group-hover:blur-2xl transition-all duration-300 opacity-0 group-hover:opacity-100"></div>
                   
                   {/* Card */}
-                  <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 hover:border-white/30 transition-all duration-300 overflow-hidden group-hover:scale-[1.02]">
+                  <div className="relative bg-white/20 backdrop-blur-lg rounded-2xl border border-white/30 hover:border-white/40 transition-all duration-300 overflow-hidden group-hover:scale-[1.02] shadow-xl">
                     {/* Progress Bar at Top */}
                     {progress && (
                       <div className="h-1 bg-black/20 relative overflow-hidden">
@@ -286,13 +322,13 @@ const Dashboard = () => {
                       {/* Content */}
                       <div className="mb-4">
                         <h3 className="text-lg sm:text-xl font-bold text-white mb-1 group-hover:text-gray-200 transition-colors duration-300">
-                          {category.name}
-                        </h3>
-                        <p className="text-gray-300 font-medium text-xs sm:text-sm mb-2 opacity-90">
                           {getSomaliTranslation(category.name)}
+                        </h3>
+                        <p className="text-gray-400 font-medium text-xs opacity-75 mb-2">
+                          {category.name}
                         </p>
-                        <p className="text-gray-400 text-xs sm:text-sm leading-relaxed line-clamp-2">
-                          {category.description}
+                        <p className="text-gray-300 text-xs sm:text-sm leading-relaxed line-clamp-2">
+                          {getSomaliDescription(category.name)}
                         </p>
                       </div>
                       
@@ -319,7 +355,7 @@ const Dashboard = () => {
                       >
                         <div className="flex items-center justify-center space-x-2">
                           <Play className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span>{progress ? 'Continue' : 'Start'}</span>
+                          <span>{progress ? 'Sii wad' : 'Bilow'}</span>
                         </div>
                       </Link>
                     </div>
@@ -333,19 +369,19 @@ const Dashboard = () => {
         {/* Stats Overview - After Learning Paths */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-12">
           {/* Started Paths */}
-          <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-[1.02]">
+          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-white/20 rounded-lg">
                 <Play className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-bold text-white mb-1">{userProgress.length}</div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Started Paths</div>
-            <div className="text-gray-400 text-xs">Wadooyin La Bilaabay</div>
+            <div className="text-gray-300 text-xs sm:text-sm font-medium">Wadooyin La Bilaabay</div>
+            <div className="text-gray-400 text-xs">Started Paths</div>
           </div>
 
           {/* Completed Levels */}
-          <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-[1.02]">
+          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-white/20 rounded-lg">
                 <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -354,12 +390,12 @@ const Dashboard = () => {
             <div className="text-xl sm:text-2xl font-bold text-white mb-1">
               {userProgress.reduce((total, progress) => total + progress.completed_levels.length, 0)}
             </div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Completed</div>
-            <div className="text-gray-400 text-xs">Heerarka La Dhammeeyay</div>
+            <div className="text-gray-300 text-xs sm:text-sm font-medium">Heerarka La Dhammeeyay</div>
+            <div className="text-gray-400 text-xs">Completed</div>
           </div>
 
           {/* Average Score */}
-          <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-[1.02]">
+          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-white/20 rounded-lg">
                 <Target className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -371,12 +407,12 @@ const Dashboard = () => {
                 : 0
               }%
             </div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Avg Score</div>
-            <div className="text-gray-400 text-xs">Dhibcaha Celceliska ah</div>
+            <div className="text-gray-300 text-xs sm:text-sm font-medium">Dhibcaha Celceliska ah</div>
+            <div className="text-gray-400 text-xs">Avg Score</div>
           </div>
 
           {/* Daily Streak */}
-          <div className="bg-white/10 backdrop-blur-sm p-3 sm:p-4 rounded-xl border border-white/20 hover:border-white/30 transition-all duration-300 hover:scale-[1.02]">
+          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
             <div className="flex items-center justify-between mb-2">
               <div className="p-2 bg-white/20 rounded-lg">
                 <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
@@ -384,17 +420,17 @@ const Dashboard = () => {
               <div className="text-orange-400">🔥</div>
             </div>
             <div className="text-xl sm:text-2xl font-bold text-white mb-1">{dailyStreak}</div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Day Streak</div>
-            <div className="text-gray-400 text-xs">Maalmaha Joogtada ah</div>
+            <div className="text-gray-300 text-xs sm:text-sm font-medium">Maalmaha Joogtada ah</div>
+            <div className="text-gray-400 text-xs">Day Streak</div>
           </div>
         </div>
 
         {/* Recent Activity or Getting Started */}
         {userProgress.length > 0 ? (
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-4 sm:p-6">
+          <div className="bg-white/25 backdrop-blur-lg rounded-2xl border border-white/30 p-4 sm:p-6 shadow-lg">
             <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6 flex items-center space-x-3">
               <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              <span>Your Progress</span>
+              <span>Horumarkaaga</span>
             </h3>
             <div className="space-y-3 sm:space-y-4">
               {userProgress.map((progress, index) => {
@@ -404,7 +440,7 @@ const Dashboard = () => {
                 return (
                   <div 
                     key={progress.id} 
-                    className="bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 hover:border-white/30 p-3 sm:p-4 transition-all duration-300 hover:scale-[1.01]"
+                    className="bg-white/20 backdrop-blur-lg rounded-xl border border-white/30 hover:border-white/40 p-3 sm:p-4 transition-all duration-300 hover:scale-[1.01] shadow-md"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3 sm:space-x-4">
@@ -419,7 +455,7 @@ const Dashboard = () => {
                             {getSomaliTranslation(category?.name)}
                           </div>
                           <div className="text-gray-400 text-xs sm:text-sm">
-                            Level {progress.current_level} • {progress.completed_levels.length} completed
+                            Heer {progress.current_level} • {progress.completed_levels.length} la dhammaysay
                           </div>
                         </div>
                       </div>
@@ -427,7 +463,7 @@ const Dashboard = () => {
                         <div className="text-lg sm:text-2xl font-bold text-white">
                           {progressPercentage}%
                         </div>
-                        <div className="text-gray-400 text-xs sm:text-sm">Done</div>
+                        <div className="text-gray-400 text-xs sm:text-sm">La dhammaysay</div>
                       </div>
                     </div>
                   </div>
@@ -436,16 +472,16 @@ const Dashboard = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-6 sm:p-8 text-center">
+          <div className="bg-white/25 backdrop-blur-lg rounded-2xl border border-white/30 p-6 sm:p-8 text-center shadow-lg">
             <div className="text-4xl sm:text-6xl mb-4 sm:mb-6">🚀</div>
             <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">
-              Ready to Start Learning?
+              Diyaar u tahay inaad bilowdo waxbarashada?
             </h3>
             <p className="text-gray-300 text-sm sm:text-base mb-3 sm:mb-4 max-w-2xl mx-auto leading-relaxed">
-              Choose your first learning path above to begin your English journey.
+              Dooro jidkaaga koowaad ee waxbarashada si aad u bilowdo safarkaga Ingiriiska.
             </p>
             <p className="text-gray-400 text-xs sm:text-sm max-w-xl mx-auto">
-              Each path is designed for real-world success. Start with Daily Conversation for basics or Job Interview English for career preparation.
+              Jid kasta waxaa loo qorsheeyay guul dhabta ah. Ku bilow Hadallada Maalinlaha ah asaaska ama Ingiriiska Waraysiga Shaqada diyaarinta shaqada.
             </p>
           </div>
         )}

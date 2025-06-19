@@ -141,10 +141,9 @@ const SpeakingLearning = () => {
     }
   }, [groupRoom])
 
-  // Auto-open chat only on desktop
+  // Auto-open chat on all devices
   useEffect(() => {
-    const isDesktop = window.innerWidth >= 1024 // lg breakpoint
-    setShowChat(isDesktop)
+    setShowChat(true)
   }, [])
 
   // Auto-scroll to bottom when new messages arrive
@@ -991,7 +990,7 @@ const SpeakingLearning = () => {
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
                   <span className="text-xs sm:text-sm font-medium text-slate-300">
-                    Level {currentLevel.level_number} Progress
+                    Heer {currentLevel.level_number} Horumarka
                   </span>
                 </div>
                 <span className="text-xs sm:text-sm text-slate-400 bg-slate-800/50 px-2 py-1 rounded-full border border-slate-700/50">
@@ -1009,7 +1008,7 @@ const SpeakingLearning = () => {
                 </div>
                 <div className="text-center mt-2">
                   <span className="text-xs text-slate-500">
-                    {Math.round(((questionIndex + 1) / currentLevel.questions.length) * 100)}% Complete
+                    {Math.round(((questionIndex + 1) / currentLevel.questions.length) * 100)}% La dhammaysay
                   </span>
                 </div>
               </div>
@@ -1028,7 +1027,7 @@ const SpeakingLearning = () => {
                         <span className="text-slate-900 font-bold text-sm">{questionIndex + 1}</span>
                       </div>
                       <h2 className="text-lg sm:text-xl lg:text-2xl font-bold bg-gradient-to-r from-white to-cyan-400 bg-clip-text text-transparent">
-                        Question {questionIndex + 1}
+                        Su'aal {questionIndex + 1}
                       </h2>
                     </div>
                     <button
@@ -1036,7 +1035,7 @@ const SpeakingLearning = () => {
                       className="group flex items-center space-x-2 text-cyan-400 hover:text-cyan-300 transition-all duration-300 bg-slate-800/50 hover:bg-slate-800/70 px-3 py-2 rounded-xl border border-slate-700/50 hover:border-cyan-400/30 backdrop-blur-sm"
                     >
                       <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-300" />
-                      <span className="text-sm font-medium">Listen</span>
+                      <span className="text-sm font-medium">Dhagayso</span>
                     </button>
                   </div>
                   <p className="text-base sm:text-lg lg:text-xl text-slate-200 mb-6 leading-relaxed font-medium">{currentQuestion.text}</p>
@@ -1306,9 +1305,17 @@ const SpeakingLearning = () => {
           {/* Modern Chat Sidebar */}
           {showChat && groupRoom && (
             <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full transition-all duration-500 mt-6 lg:mt-0`}>
-              <div className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-2xl border border-gray-200/50 h-fit lg:sticky lg:top-24 overflow-hidden">
+              <div className="bg-gradient-to-br from-white/95 via-blue-50/90 to-purple-50/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 h-fit lg:sticky lg:top-24 overflow-hidden relative">
+                {/* Modern Background Pattern */}
+                <div className="absolute inset-0 opacity-5">
+                  <div className="absolute top-4 left-4 w-20 h-20 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full blur-xl"></div>
+                  <div className="absolute bottom-4 right-4 w-16 h-16 bg-gradient-to-br from-pink-400 to-orange-400 rounded-full blur-xl"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-400 rounded-full blur-2xl"></div>
+                </div>
                 {/* Chat Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 sm:p-4 text-white">
+                <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 p-3 sm:p-4 text-white relative overflow-hidden">
+                  {/* Header Background Animation */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse"></div>
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-base sm:text-lg">{category?.name} Chat</h3>
@@ -1325,17 +1332,32 @@ const SpeakingLearning = () => {
                   </div>
                 </div>
               
-                {/* Chat Messages with Dotted Background */}
+                {/* Chat Messages with Modern Background */}
                 <div 
-                  className="h-64 sm:h-80 lg:h-96 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 relative"
+                  className="h-80 sm:h-96 lg:h-[500px] overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 relative scroll-smooth"
                   style={{
-                    backgroundImage: `radial-gradient(circle, #e5e7eb 1px, transparent 1px)`,
-                    backgroundSize: '20px 20px',
-                    backgroundPosition: '0 0, 10px 10px'
+                    background: 'linear-gradient(145deg, rgba(255,255,255,0.9) 0%, rgba(240,248,255,0.8) 50%, rgba(245,243,255,0.9) 100%)',
+                    scrollBehavior: 'smooth'
                   }}
                 >
-                  {/* Overlay to soften the dots */}
-                  <div className="absolute inset-0 bg-white/60 pointer-events-none"></div>
+                  {/* Modern Background Pattern */}
+                  <div className="absolute inset-0 pointer-events-none opacity-20">
+                    <div className="absolute top-0 left-0 w-full h-full" style={{
+                      backgroundImage: `
+                        radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.05) 0%, transparent 50%)
+                      `
+                    }}></div>
+                  </div>
+                  
+                  {/* Floating Particles */}
+                  <div className="absolute inset-0 pointer-events-none opacity-10">
+                    <div className="absolute top-10 left-10 w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                    <div className="absolute top-20 right-20 w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{animationDelay: '1s'}}></div>
+                    <div className="absolute bottom-20 left-20 w-2.5 h-2.5 bg-pink-400 rounded-full animate-bounce" style={{animationDelay: '2s'}}></div>
+                    <div className="absolute bottom-10 right-10 w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{animationDelay: '3s'}}></div>
+                  </div>
                   
                   <div className="relative z-10">
                     {chatMessages.slice(-20).map((message, idx) => {
@@ -1439,7 +1461,9 @@ const SpeakingLearning = () => {
                 </div>
               
                 {/* Message Input */}
-                <div className="p-3 sm:p-4 bg-gradient-to-r from-slate-50 to-blue-50/30 border-t border-gray-200/50 backdrop-blur-sm">
+                <div className="p-3 sm:p-4 bg-gradient-to-r from-white/90 via-blue-50/80 to-purple-50/90 border-t border-white/30 backdrop-blur-xl relative">
+                  {/* Input Area Background Glow */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-400/5 via-purple-400/5 to-pink-400/5 rounded-b-3xl"></div>
                   <div className="flex space-x-2 sm:space-x-3 mb-3">
                     <div className="flex-1 relative">
                       <input
@@ -1448,7 +1472,7 @@ const SpeakingLearning = () => {
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                         placeholder="💬 Type your message..."
-                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-white/90 border-2 border-gray-200 hover:border-blue-300 focus:border-blue-500 rounded-2xl focus:ring-2 focus:ring-blue-500/20 text-sm text-gray-700 placeholder-gray-400 shadow-sm backdrop-blur-sm transition-all duration-300 pr-12"
+                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-white/95 border-2 border-white/50 hover:border-blue-300/60 focus:border-purple-400/60 rounded-2xl focus:ring-2 focus:ring-purple-500/20 text-sm text-gray-700 placeholder-gray-400 shadow-lg backdrop-blur-xl transition-all duration-300 pr-12 hover:shadow-xl focus:shadow-2xl"
                       />
                       {newMessage.trim() && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">

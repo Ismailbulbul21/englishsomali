@@ -221,7 +221,7 @@ const MobileOptimizedAI = ({ isOpen, onClose, user, scenario = 'daily_conversati
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end md:items-center md:justify-center">
-      <div className="bg-white w-full h-full md:w-96 md:h-[600px] md:rounded-xl shadow-2xl flex flex-col">
+      <div className="bg-white w-full h-full md:w-[500px] md:h-[700px] md:rounded-xl shadow-2xl flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-4 md:rounded-t-xl">
           <div className="flex items-center justify-between">
