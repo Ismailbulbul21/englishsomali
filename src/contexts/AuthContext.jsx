@@ -44,6 +44,30 @@ export const AuthProvider = ({ children }) => {
           data: metadata
         }
       })
+      
+      // BYPASS: Auto-confirm email after successful signup
+      if (data.user && !error) {
+        try {
+          // Use our custom function to confirm email
+          await supabase.rpc('confirm_user_email', { user_id: data.user.id })
+          
+          // Create user profile immediately
+          await supabase.from('user_profiles').insert({
+            user_id: data.user.id,
+            full_name: metadata.full_name || '',
+            preferred_language: 'so',
+            created_at: new Date().toISOString()
+          })
+          
+          console.log('✅ User confirmed and profile created')
+          
+          // Force refresh the session to get the confirmed user
+          await supabase.auth.refreshSession()
+        } catch (confirmError) {
+          console.error('Confirmation bypass error:', confirmError)
+        }
+      }
+      
       return { data, error }
     },
     signIn: async (email, password) => {

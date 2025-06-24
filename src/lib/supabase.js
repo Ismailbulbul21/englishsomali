@@ -15,22 +15,6 @@ export const signUp = async (email, password, metadata = {}) => {
       data: metadata
     }
   })
-  
-  // If signup successful and user is created, create user profile
-  if (data.user && !error) {
-    try {
-      await supabase.from('user_profiles').insert({
-        user_id: data.user.id,
-        full_name: metadata.full_name || '',
-        preferred_language: 'so', // Somali as default for this app
-        created_at: new Date().toISOString()
-      })
-    } catch (profileError) {
-      console.error('Error creating user profile:', profileError)
-      // Don't return error as the main signup was successful
-    }
-  }
-  
   return { data, error }
 }
 
