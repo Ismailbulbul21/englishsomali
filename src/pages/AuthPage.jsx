@@ -14,7 +14,6 @@ const AuthPage = () => {
     fullName: ''
   })
   const [error, setError] = useState('')
-  const [signupSuccess, setSignupSuccess] = useState(false)
 
   const { signIn, signUp } = useAuth()
   const navigate = useNavigate()
@@ -35,7 +34,6 @@ const AuthPage = () => {
       [e.target.name]: e.target.value
     }))
     setError('')
-    setSignupSuccess(false)
   }
 
   const handleSubmit = async (e) => {
@@ -53,8 +51,8 @@ const AuthPage = () => {
           full_name: formData.fullName
         })
         if (error) throw error
-        // Show email confirmation message instead of navigating
-        setSignupSuccess(true)
+        // Navigate directly to dashboard after successful signup
+        navigate('/dashboard')
       }
     } catch (error) {
       setError(error.message)
@@ -89,96 +87,8 @@ const AuthPage = () => {
           </p>
         </div>
 
-        {/* Success Message - Only show when signup is successful */}
-        {signupSuccess ? (
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 lg:p-8">
-            <div className="text-center mb-4 sm:mb-6">
-              <div className="text-4xl sm:text-5xl lg:text-6xl mb-3 sm:mb-4">✅</div>
-              <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600 mb-2 sm:mb-3">
-                Account Created Successfully!
-              </h3>
-              <h4 className="text-lg sm:text-xl font-bold text-green-700 mb-3 sm:mb-4">
-                🇸🇴 Email Xaqiijin Loo Baahan Yahay
-              </h4>
-            </div>
-            
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
-              <p className="text-blue-800 font-semibold text-base sm:text-lg mb-2 sm:mb-3">
-                📬 We sent a confirmation email to:
-              </p>
-              <p className="text-blue-600 font-bold text-lg sm:text-xl mb-3 sm:mb-4 bg-white rounded-lg py-2 px-3 sm:px-4 border border-blue-300 break-all">
-                {formData.email}
-              </p>
-              <p className="text-blue-700 font-medium text-base sm:text-lg">
-                🇸🇴 Waxaan kuu dirnay email xaqiijin ah:
-              </p>
-            </div>
-            
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 sm:p-6 mb-4 sm:mb-6 text-left">
-              <h5 className="font-bold text-gray-800 mb-3 text-center text-sm sm:text-base">📋 What to do next / Maxaad samaysaa xiga:</h5>
-              <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
-                <div className="flex items-start space-x-2 sm:space-x-3">
-                  <span className="text-blue-600 font-bold">1.</span>
-                  <div>
-                    <p className="text-gray-800"><strong>English:</strong> Check your email inbox</p>
-                    <p className="text-gray-700">🇸🇴 <strong>Somali:</strong> Eeg sanduuqa email-kaaga</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2 sm:space-x-3">
-                  <span className="text-blue-600 font-bold">2.</span>
-                  <div>
-                    <p className="text-gray-800"><strong>English:</strong> Click the confirmation link</p>
-                    <p className="text-gray-700">🇸🇴 <strong>Somali:</strong> Riix linkiga xaqiijinta</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2 sm:space-x-3">
-                  <span className="text-blue-600 font-bold">3.</span>
-                  <div>
-                    <p className="text-gray-800"><strong>English:</strong> Start learning English!</p>
-                    <p className="text-gray-700">🇸🇴 <strong>Somali:</strong> Bilow barashada Ingiriiska!</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-              <p className="text-yellow-800 font-semibold text-xs sm:text-sm mb-2">
-                ⚠️ Can't find the email? / Ma heli kartid email-ka?
-              </p>
-              <div className="text-yellow-700 text-xs sm:text-sm space-y-1">
-                <p>• Check your spam/junk folder</p>
-                <p>🇸🇴 • Eeg galka spam/qashinka</p>
-                <p>• Wait a few minutes and refresh</p>
-                <p>🇸🇴 • Sug daqiiqado yar oo cusboonaysii</p>
-              </div>
-            </div>
-            
-            <div className="flex flex-col space-y-3">
-              <button
-                onClick={() => {
-                  setSignupSuccess(false)
-                  setFormData({
-                    email: '',
-                    password: '',
-                    fullName: ''
-                  })
-                }}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 sm:py-3 rounded-lg font-medium transition-colors text-sm sm:text-base"
-              >
-                ← Back to Sign Up / Ku noqo diwaangelinta
-              </button>
-              
-              <Link 
-                to="/" 
-                className="w-full bg-gray-500 hover:bg-gray-600 text-white py-2 sm:py-3 rounded-lg font-medium transition-colors text-center text-sm sm:text-base"
-              >
-                🏠 Back to Home / Ku noqo bogga hore
-              </Link>
-            </div>
-          </div>
-        ) : (
-          /* Auth Form - Only show when not in success state */
-          <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 lg:p-8">
+        {/* Auth Form */}
+        <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 lg:p-8">
             <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
               {!isLogin && (
                 <div>
@@ -267,7 +177,7 @@ const AuthPage = () => {
                   onClick={() => {
                     setIsLogin(!isLogin)
                     setError('')
-                    setSignupSuccess(false)
+
                     setFormData({
                       email: '',
                       password: '',
@@ -281,7 +191,6 @@ const AuthPage = () => {
               </p>
             </div>
           </div>
-        )}
 
         {/* Back to Home */}
         <div className="text-center mt-4 sm:mt-6">
