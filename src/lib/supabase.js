@@ -741,33 +741,171 @@ export const getUserLevelProgress = async (userId, levelId) => {
 
 // Real-time subscriptions for chat
 export const subscribeToChatMessages = (roomId, callback) => {
-  const channel = supabase
-    .channel(`chat_room_${roomId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'chat_messages',
-        filter: `room_id=eq.${roomId}`
-      },
-      async (payload) => {
-        // Add user profile info to the message
-        const userIdHash = payload.new.user_id.slice(-4)
-        const userName = `User ${userIdHash}`
-        
-        const messageWithProfile = {
-          ...payload.new,
-          user_profiles: {
-            full_name: userName
-          }
-        }
-        callback({ new: messageWithProfile })
-      }
-    )
-    .subscribe((status) => {
-      console.log('Subscription status:', status)
-    })
-  
-  return channel
+  return supabase
+    .channel(`chat_${roomId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'chat_messages',
+      filter: `room_id=eq.${roomId}`
+    }, callback)
+    .subscribe()
+}
+
+// Demo Data Functions for Non-Authenticated Users
+export const getDemoProgress = () => {
+  return [
+    {
+      category_id: '85d9e02c-b07b-4852-bbea-e4ee4966a491', // Job Interview
+      current_level: 1,
+      completed_levels: [],
+      total_score: 0,
+      started_at: new Date().toISOString()
+    },
+    {
+      category_id: 'efd71803-0cd8-4120-9b71-115ea5216bdc', // School English
+      current_level: 1,
+      completed_levels: [],
+      total_score: 0,
+      started_at: new Date().toISOString()
+    },
+    {
+      category_id: 'dca42dc2-4a2d-4077-9a32-5ce2dda6cbed', // Travel English
+      current_level: 1,
+      completed_levels: [],
+      total_score: 0,
+      started_at: new Date().toISOString()
+    },
+    {
+      category_id: '9a3642df-bee7-4d36-be18-fd64a5d21d9e', // Daily Conversation
+      current_level: 1,
+      completed_levels: [],
+      total_score: 0,
+      started_at: new Date().toISOString()
+    },
+    {
+      category_id: 'fc2bf869-e37f-4378-bc7e-1894760b62a4', // Business English
+      current_level: 1,
+      completed_levels: [],
+      total_score: 0,
+      started_at: new Date().toISOString()
+    }
+  ]
+}
+
+export const getDemoAnalytics = () => {
+  return {
+    weak_areas: ['pronunciation', 'grammar'],
+    strong_areas: ['vocabulary', 'listening'],
+    learning_style: 'visual',
+    confidence_score: 65,
+    consistency_score: 78,
+    improvement_trend: 'improving',
+    estimated_fluency_level: 'Intermediate',
+    strongest_skill: 'Daily Conversation',
+    total_ai_interactions: 45,
+    last_analysis_date: new Date().toISOString()
+  }
+}
+
+export const getDemoChatMessages = (roomId) => {
+  const demoMessages = [
+    {
+      id: 'demo-1',
+      user_id: 'demo-user-1',
+      message: 'Hello everyone! I\'m practicing my English pronunciation today. Any tips?',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+      metadata: { user_name: 'Ahmed', user_location: 'Somalia' }
+    },
+    {
+      id: 'demo-2',
+      user_id: 'demo-user-2',
+      message: 'Try recording yourself and listening back! It really helps.',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 3500000).toISOString(),
+      metadata: { user_name: 'Fatima', user_location: 'UK' }
+    },
+    {
+      id: 'demo-3',
+      user_id: 'demo-user-3',
+      message: 'I just completed Level 3 in Job Interview English! The AI feedback is amazing 🎉',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 3000000).toISOString(),
+      metadata: { user_name: 'Omar', user_location: 'Canada' }
+    },
+    {
+      id: 'demo-4',
+      user_id: 'demo-user-4',
+      message: '🎵 Voice message: "Good luck with your practice everyone!"',
+      message_type: 'voice',
+      voice_duration: 3,
+      created_at: new Date(Date.now() - 2400000).toISOString(),
+      metadata: { user_name: 'Amina', user_location: 'USA' }
+    },
+    {
+      id: 'demo-5',
+      user_id: 'demo-user-5',
+      message: 'Waa ku mahadsan tihiin! Thanks everyone for the support. This community is wonderful.',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 1800000).toISOString(),
+      metadata: { user_name: 'Hassan', user_location: 'Australia' }
+    },
+    {
+      id: 'demo-6',
+      user_id: 'demo-user-6',
+      message: 'Does anyone know how to improve my "th" sound pronunciation?',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 900000).toISOString(),
+      metadata: { user_name: 'Khadija', user_location: 'Sweden' }
+    },
+    {
+      id: 'demo-7',
+      user_id: 'demo-user-7',
+      message: 'Put your tongue between your teeth gently and blow air. Practice "think" and "this".',
+      message_type: 'text',
+      created_at: new Date(Date.now() - 600000).toISOString(),
+      metadata: { user_name: 'Mohamed', user_location: 'Netherlands' }
+    }
+  ]
+
+  return demoMessages
+}
+
+export const getDemoUserProfile = () => {
+  return {
+    full_name: 'Demo User',
+    preferred_language: 'so',
+    total_speaking_time: 0,
+    streak_days: 0,
+    last_login: new Date().toISOString(),
+    created_at: new Date().toISOString()
+  }
+}
+
+export const getDemoAttempts = () => {
+  return [
+    {
+      attempt_number: 1,
+      score: 75,
+      transcript: 'Hello, my name is Ahmed and I am very excited to be here today for this interview.',
+      feedback_somali: 'Wanaagsan! Codkaagu waa cad yahay laakiin isku day inaad ka fiirsato dhawaaqida "excited".',
+      passed: true,
+      recording_duration: 8,
+      created_at: new Date(Date.now() - 86400000).toISOString() // 1 day ago
+    },
+    {
+      attempt_number: 2,
+      score: 85,
+      transcript: 'I have experience in customer service and I believe I can contribute positively to your team.',
+      feedback_somali: 'Aad u fiican! Naxwahaagu waa hagaagsan yahay. Sii wad sidaas!',
+      passed: true,
+      recording_duration: 12,
+      created_at: new Date(Date.now() - 43200000).toISOString() // 12 hours ago
+    }
+  ]
+}
+
+export const isDemoMode = (user) => {
+  return !user || user === null
 }

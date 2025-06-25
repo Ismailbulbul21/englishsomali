@@ -89,7 +89,7 @@ const HomePage = () => {
           
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-8 sm:mb-12 px-4">
             <Link 
-              to="/auth" 
+              to="/dashboard" 
               className="bg-blue-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-lg hover:bg-blue-700 transition-colors font-medium text-base sm:text-lg flex items-center justify-center space-x-2"
             >
               <Play className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -204,7 +204,7 @@ const HomePage = () => {
             Ku biir kumanaan dadka Soomaalida ah oo maalin walba horumarinaya xirfadahooda Ingiriiska.
           </p>
           <Link 
-            to="/auth" 
+            to="/dashboard" 
             className="bg-blue-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-lg hover:bg-blue-700 transition-colors font-medium text-base sm:text-lg inline-flex items-center space-x-2"
           >
             <Play className="w-4 h-4 sm:w-5 sm:h-5" />

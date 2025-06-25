@@ -6,7 +6,7 @@ import Dashboard from './pages/Dashboard'
 import SpeakingLearning from './pages/SpeakingLearning'
 import LoadingSpinner from './components/LoadingSpinner'
 
-// Protected route component
+// Protected route component (only for sensitive pages like profile/settings)
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
   
@@ -45,22 +45,10 @@ function AppContent() {
             </PublicRoute>
           } />
           
-          {/* Protected Routes */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/learn/:categoryId" element={
-            <ProtectedRoute>
-              <SpeakingLearning />
-            </ProtectedRoute>
-          } />
-          <Route path="/speak/:categoryId" element={
-            <ProtectedRoute>
-              <SpeakingLearning />
-            </ProtectedRoute>
-          } />
+          {/* Open Access Routes (Demo Mode Supported) */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/learn/:categoryId" element={<SpeakingLearning />} />
+          <Route path="/speak/:categoryId" element={<SpeakingLearning />} />
           
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" />} />

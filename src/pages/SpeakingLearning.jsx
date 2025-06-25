@@ -13,13 +13,19 @@ import {
   getFailedAttempts, getExampleAnswer, canUserProceed, getUserLevelProgress,
   getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages,
   getUserProgress, updateUserProgress, getRemainingVoiceMessages, 
-  uploadVoiceMessage, sendVoiceMessage, filterRecentMessages, cleanupChatCache
+  uploadVoiceMessage, sendVoiceMessage, filterRecentMessages, cleanupChatCache,
+  getDemoChatMessages, getDemoAttempts, isDemoMode
 } from '../lib/supabase'
+import SignUpBanner from '../components/SignUpBanner'
+import DemoOverlay from '../components/DemoOverlay'
 
 const SpeakingLearning = () => {
   const { categoryId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  
+  // Demo mode detection
+  const isDemo = isDemoMode(user)
   
   // Core state
   const [category, setCategory] = useState(null)
@@ -62,6 +68,7 @@ const SpeakingLearning = () => {
   const [showNewUserGuide, setShowNewUserGuide] = useState(false)
   const [showResultPopup, setShowResultPopup] = useState(false)
   const [resultData, setResultData] = useState(null)
+  const [showBanner, setShowBanner] = useState(true)
   
   // Refs
   const mediaRecorderRef = useRef(null)
@@ -245,7 +252,16 @@ const SpeakingLearning = () => {
 
   const loadChatMessages = async () => {
     if (!groupRoom) return
+    
     try {
+      if (isDemo) {
+        // Use demo data for non-authenticated users
+        const demoMessages = getDemoChatMessages(groupRoom.id)
+        setChatMessages(demoMessages)
+        setOnlineUsers(7) // Show active demo community
+        return
+      }
+
       // First clean up localStorage cache for this room
       const cachedFilteredMessages = cleanupChatCache(groupRoom.id)
       
@@ -375,15 +391,21 @@ const SpeakingLearning = () => {
     
     // Load user attempts for this question
     try {
-      const { data: userAttempts } = await getUserAttempts(user.id, currentLevel.id, question.id)
-      setAttempts(userAttempts || [])
-      
-      // Check if user needs help (2+ failed attempts)
-      const { data: failedAttempts } = await getFailedAttempts(user.id, currentLevel.id, question.id)
-      if (failedAttempts && failedAttempts.length >= 2) {
-        const { data: example } = await getExampleAnswer(currentLevel.id, question.id)
-        setExampleAnswer(example)
-        setShowHelp(true)
+      if (isDemo) {
+        // Use demo data for non-authenticated users
+        const demoAttempts = getDemoAttempts()
+        setAttempts(demoAttempts)
+      } else {
+        const { data: userAttempts } = await getUserAttempts(user.id, currentLevel.id, question.id)
+        setAttempts(userAttempts || [])
+        
+        // Check if user needs help (2+ failed attempts)
+        const { data: failedAttempts } = await getFailedAttempts(user.id, currentLevel.id, question.id)
+        if (failedAttempts && failedAttempts.length >= 2) {
+          const { data: example } = await getExampleAnswer(currentLevel.id, question.id)
+          setExampleAnswer(example)
+          setShowHelp(true)
+        }
       }
     } catch (error) {
       console.error('Error loading question data:', error)
@@ -417,6 +439,12 @@ const SpeakingLearning = () => {
   }
 
   const startRecording = async () => {
+    if (isDemo) {
+      // Show demo overlay for non-authenticated users
+      setShowHelp(true) // Reuse help modal for demo prompt
+      return
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       
@@ -871,6 +899,12 @@ const SpeakingLearning = () => {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !groupRoom) return
+    
+    if (isDemo) {
+      // Prevent demo users from sending messages
+      setShowHelp(true) // Show signup prompt
+      return
+    }
 
     const messageText = newMessage.trim()
     const tempId = `temp_${Date.now()}`
@@ -936,6 +970,11 @@ const SpeakingLearning = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 relative overflow-hidden">
+      {/* Demo Mode Banner */}
+      {isDemo && showBanner && (
+        <SignUpBanner onDismiss={() => setShowBanner(false)} />
+      )}
+
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Floating Particles */}
@@ -1075,7 +1114,7 @@ const SpeakingLearning = () => {
                 </div>
 
               {/* Recording Section */}
-              <div className="text-center mb-6">
+              <div className="text-center mb-6 relative">
                 {/* Two-Button System */}
                 <div className="flex flex-col sm:flex-row justify-center items-center gap-4 sm:gap-6 mb-6">
                   {/* Start Recording Button */}
@@ -1108,6 +1147,17 @@ const SpeakingLearning = () => {
                     </button>
                   </div>
                 </div>
+
+                {/* Demo Overlay for Voice Recording */}
+                {isDemo && (
+                  <DemoOverlay 
+                    type="voice"
+                    className="absolute inset-0 rounded-3xl"
+                    title="Diiwaangeli si aad u celceliso codkaaga!"
+                    description="Hel jawaab celin AI ah oo ku saabsan dhawaaqida, naxwaha, iyo fasaxa."
+                  />
+                )}
+              </div>
                 
                 {/* Status Message */}
                 <div className="mb-6">
@@ -1282,7 +1332,6 @@ const SpeakingLearning = () => {
                   </div>
                 </div>
               )}
-              </div>
             </div>
 
             {/* Help Modal */}
@@ -1709,6 +1758,8 @@ const SpeakingLearning = () => {
           </div>
         </div>
       )}
+
+
     </div>
   )
 }

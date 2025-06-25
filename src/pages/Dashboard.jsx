@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { getCategories, getUserProgress, getUserAnswersForAnalysis } from '../lib/supabase'
+import { getCategories, getUserProgress, getUserAnswersForAnalysis, getDemoProgress, isDemoMode } from '../lib/supabase'
 import { LogOut, Play, Trophy, Clock, Target, Menu, X, Star, Zap, Award, TrendingUp } from 'lucide-react'
+import SignUpBanner from '../components/SignUpBanner'
+import DemoOverlay from '../components/DemoOverlay'
 
 const Dashboard = () => {
   const { user, signOut } = useAuth()
@@ -11,7 +13,11 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [dailyStreak, setDailyStreak] = useState(0)
+  const [showBanner, setShowBanner] = useState(true)
   const navigate = useNavigate()
+
+  // Demo mode detection
+  const isDemo = isDemoMode(user)
 
   useEffect(() => {
     loadDashboardData()
@@ -26,15 +32,23 @@ const Dashboard = () => {
       if (categoriesError) throw categoriesError
       setCategories(categoriesData || [])
       
-      // Load user progress
-      const { data: progressData, error: progressError } = await getUserProgress(user.id)
-      if (progressError) throw progressError
-      setUserProgress(progressData || [])
+      // Load user progress (demo or real)
+      if (isDemo) {
+        // Use demo data for non-authenticated users
+        const demoProgressData = getDemoProgress()
+        setUserProgress(demoProgressData)
+        setDailyStreak(0) // Demo users start with 0 streak
+      } else {
+        // Load real user progress
+        const { data: progressData, error: progressError } = await getUserProgress(user.id)
+        if (progressError) throw progressError
+        setUserProgress(progressData || [])
+        
+        // Calculate daily streak in background (non-blocking)
+        calculateDailyStreak()
+      }
       
       setLoading(false)
-      
-      // Calculate daily streak in background (non-blocking)
-      calculateDailyStreak()
     } catch (error) {
       console.error('Error loading dashboard data:', error)
       setLoading(false)
@@ -43,6 +57,11 @@ const Dashboard = () => {
 
   // Calculate daily streak based on user activity
   const calculateDailyStreak = async () => {
+    if (isDemo) {
+      setDailyStreak(0)
+      return
+    }
+
     try {
       const { data: userAnswers } = await getUserAnswersForAnalysis(user.id, 30) // Last 30 days
       if (!userAnswers || userAnswers.length === 0) {
@@ -108,6 +127,12 @@ const Dashboard = () => {
   }
 
   const handleSignOut = async () => {
+    if (isDemo) {
+      // For demo users, just redirect to auth
+      navigate('/auth')
+      return
+    }
+    
     await signOut()
     navigate('/')
   }
@@ -171,6 +196,11 @@ const Dashboard = () => {
     <div className="min-h-screen relative overflow-hidden" style={{
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%)',
     }}>
+      {/* Demo Mode Banner */}
+      {isDemo && showBanner && (
+        <SignUpBanner onDismiss={() => setShowBanner(false)} />
+      )}
+
       {/* Educational Background Pattern */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
         {/* English Learning Elements */}
@@ -367,62 +397,74 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Overview - After Learning Paths */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-12">
-          {/* Started Paths */}
-          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Play className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+        <div className="relative mb-8 sm:mb-12">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* Started Paths */}
+            <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Play className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </div>
               </div>
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">{userProgress.length}</div>
+              <div className="text-gray-300 text-xs sm:text-sm font-medium">Wadooyin La Bilaabay</div>
+              <div className="text-gray-400 text-xs">Started Paths</div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-white mb-1">{userProgress.length}</div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Wadooyin La Bilaabay</div>
-            <div className="text-gray-400 text-xs">Started Paths</div>
+
+            {/* Completed Levels */}
+            <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">
+                {userProgress.reduce((total, progress) => total + progress.completed_levels.length, 0)}
+              </div>
+              <div className="text-gray-300 text-xs sm:text-sm font-medium">Heerarka La Dhammeeyay</div>
+              <div className="text-gray-400 text-xs">Completed</div>
+            </div>
+
+            {/* Average Score */}
+            <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Target className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </div>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">
+                {userProgress.length > 0 
+                  ? Math.round(userProgress.reduce((total, progress) => total + progress.total_score, 0) / userProgress.length)
+                  : 0
+                }%
+              </div>
+              <div className="text-gray-300 text-xs sm:text-sm font-medium">Dhibcaha Celceliska ah</div>
+              <div className="text-gray-400 text-xs">Avg Score</div>
+            </div>
+
+            {/* Daily Streak */}
+            <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                </div>
+                <div className="text-orange-400">🔥</div>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-white mb-1">{dailyStreak}</div>
+              <div className="text-gray-300 text-xs sm:text-sm font-medium">Maalmaha Joogtada ah</div>
+              <div className="text-gray-400 text-xs">Day Streak</div>
+            </div>
           </div>
 
-          {/* Completed Levels */}
-          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-            </div>
-            <div className="text-xl sm:text-2xl font-bold text-white mb-1">
-              {userProgress.reduce((total, progress) => total + progress.completed_levels.length, 0)}
-            </div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Heerarka La Dhammeeyay</div>
-            <div className="text-gray-400 text-xs">Completed</div>
-          </div>
-
-          {/* Average Score */}
-          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Target className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-            </div>
-            <div className="text-xl sm:text-2xl font-bold text-white mb-1">
-              {userProgress.length > 0 
-                ? Math.round(userProgress.reduce((total, progress) => total + progress.total_score, 0) / userProgress.length)
-                : 0
-              }%
-            </div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Dhibcaha Celceliska ah</div>
-            <div className="text-gray-400 text-xs">Avg Score</div>
-          </div>
-
-          {/* Daily Streak */}
-          <div className="bg-white/25 backdrop-blur-lg p-3 sm:p-4 rounded-xl border border-white/30 hover:border-white/40 transition-all duration-300 hover:scale-[1.02] shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-              </div>
-              <div className="text-orange-400">🔥</div>
-            </div>
-            <div className="text-xl sm:text-2xl font-bold text-white mb-1">{dailyStreak}</div>
-            <div className="text-gray-300 text-xs sm:text-sm font-medium">Maalmaha Joogtada ah</div>
-            <div className="text-gray-400 text-xs">Day Streak</div>
-          </div>
+          {/* Demo Overlay for Stats */}
+          {isDemo && (
+            <DemoOverlay 
+              type="progress"
+              className="absolute inset-0 rounded-xl"
+              title="Raaci horumarkaaga!"
+              description="Arag horumarkaaga waqti ka dib oo hel shahaado guul."
+            />
+          )}
         </div>
 
         {/* Recent Activity or Getting Started */}
