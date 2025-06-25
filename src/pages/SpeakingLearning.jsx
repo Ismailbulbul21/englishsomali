@@ -7,6 +7,7 @@ import {
   Clock, CheckCircle, XCircle, Star
 } from 'lucide-react'
 import VoiceRecorder from '../components/VoiceRecorder'
+import EnhancedFeedbackDisplay from '../components/EnhancedFeedbackDisplay'
 import { aiService } from '../services/aiService'
 import { 
   getCategories, getLevelsForCategory, getUserAttempts, saveUserAttempt,
@@ -14,7 +15,9 @@ import {
   getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages,
   getUserProgress, updateUserProgress, getRemainingVoiceMessages, 
   uploadVoiceMessage, sendVoiceMessage, filterRecentMessages, cleanupChatCache,
-  getRecentAttemptsForQuestion, trackUserPresence, getActiveUsersOnPath
+  getRecentAttemptsForQuestion, trackUserPresence, getActiveUsersOnPath,
+  saveDetailedFeedback, saveFeedbackContext, saveErrorPatterns,
+  savePersonalizedRoadmap, getUserErrorPatterns, getUserRoadmap, isDemoMode
 } from '../lib/supabase'
 
 
@@ -614,55 +617,171 @@ const SpeakingLearning = () => {
     setIsAnalyzing(true)
     
     try {
-      const formData = new FormData()
-      formData.append('audio', audioBlob, 'recording.webm')
-      formData.append('question', currentQuestion.question_text)
-      formData.append('expected_answer', currentQuestion.expected_answer)
-      formData.append('level', currentLevel.level_number.toString())
-      formData.append('user_id', user.id)
-      formData.append('level_id', currentLevel.id)
-      formData.append('question_id', currentQuestion.id)
+      // Get level configuration for analysis context
+      const levelConfig = getLevelConfig(currentLevel.level_number)
       
-      const { data, error } = await analyzeVoiceAnswer(formData)
+      // First transcribe the audio if we don't have a transcript
+      let finalTranscript = transcript
+      if (!finalTranscript && audioBlob) {
+        try {
+          finalTranscript = await aiService.transcribeAudio(audioBlob)
+        } catch (transcribeError) {
+          console.error('Error transcribing audio:', transcribeError)
+          finalTranscript = "Could not transcribe audio"
+        }
+      }
       
-      if (error) throw error
+      // Validate inputs before analysis
+      const questionText = currentQuestion.text || currentQuestion.question_text || currentQuestion.question || ''
+      const userAnswer = finalTranscript || transcript || ''
       
-      setFeedback(data)
+      if (!questionText) {
+        throw new Error('Question text is missing')
+      }
       
-      // Store the attempt
+      if (!userAnswer || userAnswer.trim().length === 0) {
+        throw new Error('No speech was detected. Please try speaking again.')
+      }
+      
+      console.log('Analyzing answer:', { questionText, userAnswer, levelConfig })
+      
+      // Use enhanced intelligent analysis
+      const data = await aiService.analyzeAnswerIntelligent(
+        questionText,
+        userAnswer,
+        {
+          passRate: levelConfig.passRate,
+          scoringWeights: levelConfig.weights,
+          difficultyLevel: levelConfig.difficulty,
+          category: category.name.toLowerCase().replace(/\s+/g, '_'),
+          expected_answer: currentQuestion.expected_answer || ''
+        }
+      )
+      
+      console.log('Analysis result:', data)
+      
+      // Ensure all scores are numbers and not undefined
+      const validatedData = {
+        ...data,
+        overallScore: Number(data.overallScore) || 0,
+        grammarScore: Number(data.grammarScore) || 0,
+        fluencyScore: Number(data.fluencyScore) || 0,
+        pronunciationScore: Number(data.pronunciationScore) || 0,
+        relevanceScore: Number(data.relevanceScore) || 0,
+        passed: Boolean(data.passed)
+      }
+      
+      console.log('Validated data:', validatedData)
+      setFeedback(validatedData)
+      
+      // Store the attempt with enhanced data
       const attemptData = {
         user_id: user.id,
         level_id: currentLevel.id,
         question_id: currentQuestion.id,
-        audio_url: data.audio_url,
-        transcript: data.transcript || transcript,
-        overall_score: data.overallScore,
-        grammar_score: data.grammarScore,
-        pronunciation_score: data.pronunciationScore,
-        fluency_score: data.fluencyScore,
-        feedback: data.feedback,
-        feedback_somali: data.feedback_somali,
-        encouragement_somali: data.encouragement_somali,
-        passed: data.passed
+        attempt_number: (attempts.length || 0) + 1,
+        score: validatedData.overallScore,
+        transcript: userAnswer,
+        feedback_somali: validatedData.feedback_somali,
+        passed: validatedData.passed,
+        recording_duration: recordingTime || 0,
+        detailed_feedback: validatedData.detailed_feedback || {},
+        content_analysis: validatedData.detailed_feedback?.content_analysis || {},
+        error_patterns: validatedData.detailed_feedback?.error_patterns || {},
+        emotional_state: validatedData.detailed_feedback?.emotional_state || {},
+        coaching_notes: validatedData.detailed_feedback?.coaching_notes || {},
+        improvement_plan: validatedData.detailed_feedback?.improvement_plan || {}
       }
       
-      const { error: attemptError } = await saveUserAttempt(attemptData)
-      if (attemptError) {
-        console.error('Error saving attempt:', attemptError)
+      // Only save to database for authenticated users
+      if (user && !isDemoMode(user)) {
+        const { error: attemptError } = await saveUserAttempt(attemptData)
+        if (attemptError) {
+          console.error('Error saving attempt:', attemptError)
+        }
+      }
+
+      // Save intelligent feedback data (only for registered users)
+      if (user && !isDemoMode(user)) {
+        try {
+          // Save detailed feedback analysis
+          if (validatedData.detailed_feedback) {
+            await saveDetailedFeedback(user.id, currentLevel.id, currentQuestion.id, validatedData)
+          }
+
+          // Save feedback context for personalization
+          if (validatedData.detailed_feedback?.content_analysis) {
+            await saveFeedbackContext(user.id, currentQuestion.id, validatedData.detailed_feedback.content_analysis)
+          }
+
+          // Save error patterns for tracking
+          if (validatedData.detailed_feedback?.error_patterns) {
+            await saveErrorPatterns(user.id, validatedData.detailed_feedback.error_patterns)
+          }
+
+          // Save personalized roadmap
+          if (validatedData.detailed_feedback?.improvement_plan) {
+            await savePersonalizedRoadmap(
+              user.id, 
+              validatedData.detailed_feedback.improvement_plan,
+              validatedData.detailed_feedback.content_analysis,
+              {
+                overall: validatedData.overallScore,
+                grammar: validatedData.grammarScore,
+                fluency: validatedData.fluencyScore,
+                relevance: validatedData.relevanceScore
+              }
+            )
+          }
+
+          console.log('✅ Intelligent feedback data saved successfully')
+        } catch (error) {
+          console.error('❌ Error saving intelligent feedback data:', error)
+          // Don't throw - this shouldn't break the main flow
+        }
       }
       
       // Update attempts list
       setAttempts(prev => [...prev, attemptData])
       
       // Show result popup if configured to
-      if (data.passed || attempts.length >= 1) {
-        setResultData(data)
+      if (validatedData.passed || attempts.length >= 1) {
+        console.log('🎯 Setting result data:', validatedData)
+        console.log('🎯 Detailed feedback:', validatedData.detailed_feedback)
+        setResultData(validatedData)
         setShowResultPopup(true)
       }
       
     } catch (error) {
       console.error('Error analyzing answer:', error)
-      alert('Error analyzing your answer. Please try again.')
+      
+      // Show user-friendly error message
+      let errorMessage = 'Error analyzing your answer. Please try again.'
+      
+      if (error.message.includes('No speech was detected')) {
+        errorMessage = 'No speech was detected. Please speak clearly and try again.'
+      } else if (error.message.includes('Question text is missing')) {
+        errorMessage = 'Question not loaded properly. Please refresh the page.'
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.'
+      }
+      
+      alert(errorMessage)
+      
+      // Set error feedback for display
+      setFeedback({
+        overallScore: 0,
+        grammarScore: 0,
+        fluencyScore: 0,
+        pronunciationScore: 0,
+        relevanceScore: 0,
+        passed: false,
+        feedback_somali: "⚠️ Wax khalad ah ayaa dhacay. Dib u isku day.",
+        encouragement_somali: "🔄 Dib u isku day. Wax walba way hagaagi doontaa.",
+        feedback: "Analysis error. Please try again.",
+        improvements_somali: ["Dib u isku day", "Internet-ka hubi"],
+        strengths_somali: []
+      })
     } finally {
       setIsAnalyzing(false)
     }
@@ -1643,89 +1762,20 @@ const SpeakingLearning = () => {
         </div>
       </div>
 
-      {/* Result Popup Modal */}
+      {/* Enhanced Feedback Display */}
       {showResultPopup && resultData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-            {/* Header */}
-            <div className={`p-6 text-center ${resultData.passed ? 'bg-gradient-to-r from-green-400 to-green-600' : 'bg-gradient-to-r from-red-400 to-red-600'}`}>
-              <div className="text-6xl mb-3">
-                {resultData.passed ? '🎉' : '😔'}
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-2">
-                {resultData.passed ? 'Waad baastay!' : 'Waad dhacday'}
-              </h2>
-              <p className="text-white text-lg opacity-90">
-                {resultData.passed ? 'Shaqo fiican!' : 'Dib u isku day'}
-              </p>
-            </div>
-            
-            {/* Score */}
-            <div className="p-6 text-center">
-              <div className={`text-4xl font-bold mb-2 ${resultData.passed ? 'text-green-600' : 'text-red-600'}`}>
-                {resultData.overallScore}%
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-blue-600">{resultData.grammarScore}%</div>
-                  <div className="text-xs text-gray-600">Grammar</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-purple-600">{resultData.pronunciationScore}%</div>
-                  <div className="text-xs text-gray-600">Speech</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-semibold text-orange-600">{resultData.fluencyScore}%</div>
-                  <div className="text-xs text-gray-600">Fluency</div>
-                </div>
-              </div>
-              
-              {/* Feedback */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <p className="text-gray-800 text-sm leading-relaxed">
-                  {resultData.feedback_somali}
-                </p>
-                {resultData.encouragement_somali && (
-                  <p className="text-green-700 font-medium text-sm mt-2">
-                    💪 {resultData.encouragement_somali}
-                  </p>
-                )}
-              </div>
-              
-              {/* Action Buttons */}
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => {
-                    setShowResultPopup(false)
-                    retryQuestion()
-                  }}
-                  className="flex-1 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-                >
-                  Ku celi
-                </button>
-                
-                {resultData.passed ? (
-                  <button
-                    onClick={() => {
-                      setShowResultPopup(false)
-                      nextQuestion()
-                    }}
-                    className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
-                  >
-                    Xigta
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowResultPopup(false)}
-                    className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-                  >
-                    OK
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <EnhancedFeedbackDisplay
+          feedback={resultData}
+          onClose={() => setShowResultPopup(false)}
+          onNextQuestion={() => {
+            setShowResultPopup(false)
+            nextQuestion()
+          }}
+          onRetry={() => {
+            setShowResultPopup(false)
+            retryQuestion()
+          }}
+        />
       )}
 
       {/* Voice Recorder Modal */}

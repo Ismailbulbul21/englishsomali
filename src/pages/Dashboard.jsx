@@ -35,9 +35,9 @@ const Dashboard = () => {
         setDailyStreak(0) // Demo users start with 0 streak
       } else {
         // Load real user progress
-        const { data: progressData, error: progressError } = await getUserProgress(user.id)
-        if (progressError) throw progressError
-        setUserProgress(progressData || [])
+      const { data: progressData, error: progressError } = await getUserProgress(user.id)
+      if (progressError) throw progressError
+      setUserProgress(progressData || [])
         
         // Calculate daily streak in background (non-blocking)
         calculateDailyStreak()
@@ -218,7 +218,7 @@ const Dashboard = () => {
         </div>
         
         <div className="relative z-10 flex items-center justify-center min-h-screen">
-          <div className="text-center">
+        <div className="text-center">
             <div className="relative mb-8">
               <div className="w-24 h-24 mx-auto relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full animate-spin"></div>
@@ -276,13 +276,13 @@ const Dashboard = () => {
                 <p className="text-xs text-gray-400">AI English Learning</p>
               </div>
             </Link>
-
+            
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center space-x-6">
               {user ? (
                 <>
                   <div className="flex items-center space-x-4 text-white">
-                    <div className="text-right">
+              <div className="text-right">
                       <div className="text-sm font-medium">{user.email}</div>
                       <div className="text-xs text-gray-400">Learner</div>
                     </div>
@@ -291,14 +291,14 @@ const Dashboard = () => {
                         {user.email.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
+              </div>
+              <button
+                onClick={handleSignOut}
                     className="flex items-center space-x-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 rounded-xl transition-all duration-300 border border-red-500/30"
-                  >
-                    <LogOut className="w-4 h-4" />
+              >
+                <LogOut className="w-4 h-4" />
                     <span>Sign Out</span>
-                  </button>
+              </button>
                 </>
               ) : (
                 <div className="flex items-center space-x-3">
@@ -314,7 +314,7 @@ const Dashboard = () => {
                   >
                     Sign Up
                   </Link>
-                </div>
+            </div>
               )}
             </nav>
 
@@ -326,10 +326,10 @@ const Dashboard = () => {
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
-        </div>
+          </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
           <div className="md:hidden bg-black/50 backdrop-blur-xl border-t border-white/10">
             <div className="px-4 py-4 space-y-3">
               {user ? (
@@ -344,14 +344,14 @@ const Dashboard = () => {
                       <div className="text-white font-medium">{user.email}</div>
                       <div className="text-gray-400 text-sm">Learner</div>
                     </div>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
+                </div>
+                <button
+                  onClick={handleSignOut}
                     className="w-full flex items-center space-x-2 px-4 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-xl transition-all duration-300"
-                  >
+                >
                     <LogOut className="w-5 h-5" />
                     <span>Sign Out</span>
-                  </button>
+                </button>
                 </>
               ) : (
                 <div className="space-y-2">
@@ -369,9 +369,9 @@ const Dashboard = () => {
                   >
                     Sign Up
                   </Link>
-                </div>
-              )}
             </div>
+          )}
+        </div>
           </div>
         )}
       </header>
@@ -386,10 +386,10 @@ const Dashboard = () => {
               <span className="block text-lg md:text-xl text-purple-300 mt-1">
                 {greeting.en}
               </span>
-            </h2>
+          </h2>
             <p className="text-gray-300 text-lg max-w-2xl mx-auto">
               {user ? 'Sii wad safarkaga barashada Ingiriiska' : 'Bilow safarkaga barashada Ingiriiska maanta'}
-            </p>
+          </p>
           </div>
         </div>
 
@@ -402,7 +402,7 @@ const Dashboard = () => {
               <span className="text-lg">Dooro jidkaaga</span>
             </div>
           </div>
-
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {categories.map((category, index) => {
               const progress = getCategoryProgress(category.id)
@@ -418,11 +418,11 @@ const Dashboard = () => {
                   <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/20 hover:border-white/40 transition-all duration-500 hover:scale-105 hover:shadow-2xl">
                     {/* Progress Bar Background */}
                     <div className="absolute top-0 left-0 h-1 w-full bg-white/10 rounded-t-2xl">
-                      <div 
+                        <div 
                         className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-t-2xl transition-all duration-1000"
-                        style={{ width: `${progressPercentage}%` }}
-                      ></div>
-                    </div>
+                          style={{ width: `${progressPercentage}%` }}
+                        ></div>
+                      </div>
 
                     {/* Category Icon */}
                     <div className="flex items-center justify-between mb-4">
@@ -432,27 +432,27 @@ const Dashboard = () => {
                         'from-pink-500/30 to-red-600/30'
                       } group-hover:scale-110 transition-transform duration-300`}>
                         <IconComponent className="w-7 h-7 text-white" />
-                      </div>
-                      <div className="text-right">
+                        </div>
+                          <div className="text-right">
                         <div className="text-white text-lg font-medium">{progressPercentage}%</div>
                         <div className="text-gray-400 text-sm">Dhammaystiran</div>
+                          </div>
                       </div>
-                    </div>
-
+                      
                     {/* Category Title - Somali */}
                     <h4 className="text-white text-xl font-bold mb-2 group-hover:text-blue-300 transition-colors duration-300">
-                      {getSomaliTranslation(category.name)}
+                          {getSomaliTranslation(category.name)}
                     </h4>
                     
                     {/* English Subtitle - Keep in English */}
                     <p className="text-purple-300 text-base mb-3 font-medium">
-                      {category.name}
-                    </p>
+                          {category.name}
+                        </p>
 
                     {/* Description - Somali */}
                     <p className="text-gray-300 text-base mb-4 line-clamp-3 leading-relaxed">
-                      {getSomaliDescription(category.name)}
-                    </p>
+                          {getSomaliDescription(category.name)}
+                        </p>
 
                     {/* Action Button */}
                     <div className="flex items-center justify-between">
@@ -643,28 +643,28 @@ const Dashboard = () => {
               { name: 'Balanbaalis Bulsheed', icon: '🦋', earned: false, description: 'Caawin 10 ardayda kale' },
               { name: 'Xaasidka AI', icon: '🤖', earned: false, description: 'Dhammayso 50 wada-hadal AI' }
             ].map((achievement, index) => (
-              <div 
+                  <div 
                 key={index}
                 className={`relative p-4 rounded-xl border transition-all duration-300 ${
                   achievement.earned 
                     ? 'bg-gradient-to-br from-yellow-500/20 to-orange-600/20 border-yellow-500/30 shadow-lg' 
                     : 'bg-white/5 border-white/10 grayscale opacity-50'
                 }`}
-              >
+                  >
                 <div className="text-center">
                   <div className="text-3xl mb-2">{achievement.icon}</div>
                   <div className="text-white text-sm font-bold mb-1">{achievement.name}</div>
                   <div className="text-gray-400 text-xs">{achievement.description}</div>
-                </div>
+                        </div>
                 {achievement.earned && (
                   <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
                     <span className="text-white text-xs">✓</span>
-                  </div>
+                          </div>
                 )}
-              </div>
+                          </div>
             ))}
-          </div>
-        </div>
+                          </div>
+                        </div>
 
         {/* Live Leaderboard - COMPETITION */}
         <div className="mb-12">
@@ -674,8 +674,8 @@ const Dashboard = () => {
               <div className="flex items-center space-x-2 text-gray-400">
                 <TrendingUp className="w-6 h-6" />
                 <span className="text-lg">Ardayda ugu fiican usbuucan</span>
-              </div>
-            </div>
+                      </div>
+                        </div>
 
             <div className="space-y-3">
               {[
@@ -701,7 +701,7 @@ const Dashboard = () => {
                       'bg-white/20 text-white'
                     }`}>
                       {player.rank}
-                    </div>
+                      </div>
                     <div>
                       <div className="text-white font-medium text-lg">{player.name}</div>
                       <div className="text-gray-400 text-base">{player.country} • {player.streak} maalmood joogto</div>
@@ -772,7 +772,7 @@ const Dashboard = () => {
               <Headphones className="w-5 h-5" />
             </Link>
           </div>
-        </div>
+      </div>
       </main>
     </div>
   )

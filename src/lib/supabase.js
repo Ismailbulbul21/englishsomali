@@ -420,16 +420,16 @@ export const getChatMessages = async (roomId, limit = 20) => {
     
     // Fetch messages first
     const { data: messages, error } = await supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('room_id', roomId)
-      .order('created_at', { ascending: false })
-      .limit(limit * 2) // Get more to account for filtering
-    
-    if (error) {
+    .from('chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+    .limit(limit * 2) // Get more to account for filtering
+  
+  if (error) {
       console.error('Error fetching recent messages:', error)
-      return { data: [], error }
-    }
+    return { data: [], error }
+  }
     
     // Then fetch user profiles for all unique user IDs
     const userIds = [...new Set(messages?.map(m => m.user_id).filter(Boolean))]
@@ -452,17 +452,17 @@ export const getChatMessages = async (roomId, limit = 20) => {
       ...message,
       user_profiles: userProfiles[message.user_id] || null
     }))
-    
-    // Filter messages by age on client side
-    const now = new Date()
+  
+  // Filter messages by age on client side
+  const now = new Date()
     const filteredMessages = messagesWithProfiles?.filter(message => {
-      const messageAge = new Date(message.created_at)
-      const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
-      
-      // Both text and voice messages: only show if less than 24 hours old
-      return hoursDiff < 24
-    }).slice(0, limit) || []
+    const messageAge = new Date(message.created_at)
+    const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
     
+    // Both text and voice messages: only show if less than 24 hours old
+    return hoursDiff < 24
+  }).slice(0, limit) || []
+  
     return { data: filteredMessages, error: null }
   } catch (error) {
     console.error('Error in getChatMessages:', error)
@@ -474,15 +474,15 @@ export const sendChatMessage = async (roomId, userId, message, messageType = 'te
   try {
     // Insert the message
     const { data: messageData, error: insertError } = await supabase
-      .from('chat_messages')
-      .insert([{
-        room_id: roomId,
-        user_id: userId,
-        message,
-        message_type: messageType,
-        metadata
-      }])
-      .select()
+    .from('chat_messages')
+    .insert([{
+      room_id: roomId,
+      user_id: userId,
+      message,
+      message_type: messageType,
+      metadata
+    }])
+    .select()
     
     if (insertError) {
       return { data: null, error: insertError }
@@ -840,10 +840,10 @@ export const subscribeToChatMessages = (roomId, callback) => {
   return supabase
     .channel(`chat_${roomId}`)
     .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'chat_messages',
-      filter: `room_id=eq.${roomId}`
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `room_id=eq.${roomId}`
     }, async (payload) => {
       // Fetch user profile for the new message
       if (payload.new.user_id) {
@@ -1070,6 +1070,306 @@ export const getRecentAttemptsForQuestion = async (levelId, questionId, limit = 
     return { data: attemptsWithProfiles, error: null }
   } catch (error) {
     console.error('Error fetching recent attempts:', error)
+    return { data: null, error }
+  }
+}
+
+// ===== INTELLIGENT FEEDBACK SYSTEM DATABASE FUNCTIONS =====
+
+/**
+ * Save detailed feedback analysis to database
+ */
+export async function saveDetailedFeedback(userId, levelId, questionId, analysisData) {
+  try {
+    const { data, error } = await supabase
+      .from('user_attempts')
+      .update({
+        detailed_feedback: analysisData.detailed_feedback,
+        content_analysis: analysisData.detailed_feedback.content_analysis,
+        error_patterns: analysisData.detailed_feedback.error_patterns,
+        emotional_state: analysisData.detailed_feedback.emotional_state,
+        coaching_notes: analysisData.detailed_feedback.coaching_notes,
+        improvement_plan: analysisData.detailed_feedback.improvement_plan
+      })
+      .eq('user_id', userId)
+      .eq('level_id', levelId)
+      .eq('question_id', questionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error saving detailed feedback:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Save feedback context for personalization
+ */
+export async function saveFeedbackContext(userId, questionId, contentAnalysis) {
+  try {
+    const contextData = {
+      user_id: userId,
+      question_id: questionId,
+      question_type: contentAnalysis.question_type,
+      mentioned_content: {
+        skills: contentAnalysis.mentioned_skills,
+        personal_details: contentAnalysis.personal_details,
+        cultural_references: contentAnalysis.cultural_references
+      },
+      personal_details: contentAnalysis.personal_details,
+      cultural_references: contentAnalysis.cultural_references,
+      skill_demonstrations: {
+        covered_elements: contentAnalysis.question_elements_covered,
+        missing_elements: contentAnalysis.missing_elements,
+        content_richness_score: contentAnalysis.content_richness_score
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('feedback_context')
+      .insert(contextData)
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error saving feedback context:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Save or update error patterns for tracking
+ */
+export async function saveErrorPatterns(userId, errorAnalysis) {
+  try {
+    const errorPromises = []
+
+    // Process Somali interference errors
+    errorAnalysis.somali_interference.forEach(error => {
+      errorPromises.push(
+        upsertErrorPattern(userId, {
+          error_type: 'somali_interference',
+          error_category: error.type,
+          original_text: error.original,
+          corrected_text: error.correction,
+          explanation_english: error.explanation,
+          explanation_somali: error.somali_explanation
+        })
+      )
+    })
+
+    // Process article errors
+    errorAnalysis.article_errors.forEach(error => {
+      errorPromises.push(
+        upsertErrorPattern(userId, {
+          error_type: 'missing_article',
+          error_category: 'articles',
+          original_text: error.word,
+          corrected_text: error.suggestion,
+          explanation_english: error.explanation,
+          explanation_somali: error.somali_explanation
+        })
+      )
+    })
+
+    // Process verb tense errors
+    errorAnalysis.verb_tense_errors.forEach(error => {
+      errorPromises.push(
+        upsertErrorPattern(userId, {
+          error_type: 'verb_tense',
+          error_category: 'grammar',
+          original_text: error.issue,
+          corrected_text: 'Use appropriate tense',
+          explanation_english: error.explanation,
+          explanation_somali: error.somali_explanation
+        })
+      )
+    })
+
+    await Promise.all(errorPromises)
+    return { error: null }
+  } catch (error) {
+    console.error('Error saving error patterns:', error)
+    return { error }
+  }
+}
+
+/**
+ * Upsert error pattern (insert or update frequency)
+ */
+async function upsertErrorPattern(userId, errorData) {
+  try {
+    // First, check if this error pattern already exists
+    const { data: existingError } = await supabase
+      .from('error_patterns')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('error_type', errorData.error_type)
+      .eq('original_text', errorData.original_text)
+      .single()
+
+    if (existingError) {
+      // Update frequency count
+      const { error } = await supabase
+        .from('error_patterns')
+        .update({
+          frequency_count: existingError.frequency_count + 1,
+          last_occurrence: new Date().toISOString()
+        })
+        .eq('id', existingError.id)
+
+      if (error) throw error
+    } else {
+      // Insert new error pattern
+      const { error } = await supabase
+        .from('error_patterns')
+        .insert({
+          user_id: userId,
+          ...errorData
+        })
+
+      if (error) throw error
+    }
+  } catch (error) {
+    console.error('Error upserting error pattern:', error)
+    throw error
+  }
+}
+
+/**
+ * Save or update personalized roadmap
+ */
+export async function savePersonalizedRoadmap(userId, improvementPlan, contentAnalysis, scores) {
+  try {
+    const roadmapData = {
+      user_id: userId,
+      current_focus_areas: improvementPlan.immediate_focus,
+      weakness_patterns: [
+        ...(scores.grammar < 70 ? ['grammar'] : []),
+        ...(scores.relevance < 70 ? ['content_completeness'] : []),
+        ...(scores.fluency < 70 ? ['fluency'] : [])
+      ],
+      next_session_goals: improvementPlan.this_week,
+      weekly_targets: improvementPlan.next_week,
+      cultural_coaching_notes: [],
+      confidence_building_plan: [],
+      estimated_improvement_timeline: {
+        current_level: scores.overall,
+        target_level: Math.min(scores.overall + 15, 100),
+        estimated_weeks: Math.ceil((100 - scores.overall) / 10)
+      },
+      last_updated: new Date().toISOString()
+    }
+
+    // Check if roadmap exists
+    const { data: existingRoadmap } = await supabase
+      .from('personalized_roadmaps')
+      .select('id')
+      .eq('user_id', userId)
+      .single()
+
+    if (existingRoadmap) {
+      // Update existing roadmap
+      const { data, error } = await supabase
+        .from('personalized_roadmaps')
+        .update(roadmapData)
+        .eq('id', existingRoadmap.id)
+
+      if (error) throw error
+      return { data, error: null }
+    } else {
+      // Insert new roadmap
+      const { data, error } = await supabase
+        .from('personalized_roadmaps')
+        .insert(roadmapData)
+
+      if (error) throw error
+      return { data, error: null }
+    }
+  } catch (error) {
+    console.error('Error saving personalized roadmap:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get user's error patterns for analysis
+ */
+export async function getUserErrorPatterns(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('error_patterns')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_resolved', false)
+      .order('frequency_count', { ascending: false })
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error fetching error patterns:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get user's personalized roadmap
+ */
+export async function getUserRoadmap(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('personalized_roadmaps')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error fetching roadmap:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Get feedback context history for personalization
+ */
+export async function getFeedbackContextHistory(userId, limit = 10) {
+  try {
+    const { data, error } = await supabase
+      .from('feedback_context')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error fetching feedback context history:', error)
+    return { data: null, error }
+  }
+}
+
+/**
+ * Mark error pattern as resolved
+ */
+export async function markErrorPatternResolved(userId, errorType, originalText) {
+  try {
+    const { data, error } = await supabase
+      .from('error_patterns')
+      .update({ is_resolved: true })
+      .eq('user_id', userId)
+      .eq('error_type', errorType)
+      .eq('original_text', originalText)
+
+    if (error) throw error
+    return { data, error: null }
+  } catch (error) {
+    console.error('Error marking error pattern as resolved:', error)
     return { data: null, error }
   }
 }

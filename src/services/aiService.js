@@ -1,19 +1,59 @@
-import { env } from '../config/env'
+import { env } from '../config/env.js'
 
-const HUGGING_FACE_API_KEY = import.meta.env.VITE_HUGGING_FACE_API_KEY || 'your_api_key_here'
+const HUGGING_FACE_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_HUGGING_FACE_API_KEY) || 'your_api_key_here'
 const HF_API_BASE = 'https://api-inference.huggingface.co/models'
+const OPENROUTER_API_KEY = env.OPENROUTER_API_KEY
+const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1'
 
 class AIService {
   constructor() {
     this.apiKey = HUGGING_FACE_API_KEY
+    this.openRouterKey = OPENROUTER_API_KEY
     this.models = {
       conversation: 'microsoft/DialoGPT-medium',
       grammar: 'textattack/roberta-base-CoLA',
       translation: 'Helsinki-NLP/opus-mt-en-ar', // English to Arabic (closest to Somali)
       sentiment: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-      textGeneration: 'gpt2'
+      textGeneration: 'gpt2',
+      // OpenRouter models for intelligent analysis (with free fallbacks)
+      intelligent_feedback: 'meta-llama/llama-3.2-3b-instruct:free', // Free model for testing
+      quick_feedback: 'huggingface/zephyr-7b-beta:free', // Free alternative
+      fallback_feedback: 'google/gemma-2-9b-it:free' // Free fallback
     }
     this.recognitionRef = null
+  }
+
+  // New OpenRouter API request method
+  async makeOpenRouterRequest(model, messages, options = {}) {
+    try {
+      const response = await fetch(`${OPENROUTER_API_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.openRouterKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': (typeof window !== 'undefined' && window.location?.origin) || 'https://englishlearning.app',
+          'X-Title': 'English Learning App'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          temperature: options.temperature || 0.7,
+          max_tokens: options.max_tokens || 1500,
+          top_p: options.top_p || 0.9,
+          ...options
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API request failed: ${response.status}`)
+      }
+
+      const data = await response.json()
+      return data.choices[0].message.content
+    } catch (error) {
+      console.error('OpenRouter API Error:', error)
+      throw error
+    }
   }
 
   async makeRequest(model, payload) {
@@ -775,7 +815,13 @@ class AIService {
   // Enhanced analyze answer with Somali feedback focus
   async analyzeAnswer(question, userAnswer, context = {}) {
     try {
-      if (!userAnswer || userAnswer.trim().length === 0) {
+      // Validate inputs
+      if (!question || typeof question !== 'string') {
+        console.error('Invalid question input:', question)
+        return this.createSomaliErrorResponse()
+      }
+      
+      if (!userAnswer || typeof userAnswer !== 'string' || userAnswer.trim().length === 0) {
         return this.createSomaliNoAnswerResponse()
       }
 
@@ -922,47 +968,86 @@ class AIService {
 
   // Check if answer is relevant to the question
   checkRelevantContent(question, userAnswer) {
+    if (!question || !userAnswer) return false
+    
     const questionLower = question.toLowerCase()
     const answerLower = userAnswer.toLowerCase()
     
-    // Extract key question words
-    const questionKeywords = this.extractQuestionKeywords(questionLower)
+    // Extract key terms from question
+    const questionTerms = this.extractQuestionKeywords(questionLower)
     
-    // Check if answer addresses the question type
-    if (questionLower.includes('tell me about yourself') || questionLower.includes('about yourself')) {
-      return answerLower.includes('my name') || answerLower.includes('i am') || answerLower.includes('i work') || answerLower.includes('i like')
-    }
-    
-    if (questionLower.includes('what is your name') || questionLower.includes('your name')) {
-      return answerLower.includes('my name') || answerLower.includes('i am') || answerLower.includes('call me')
-    }
-    
-    if (questionLower.includes('where are you from') || questionLower.includes('where do you live')) {
-      return answerLower.includes('from') || answerLower.includes('live in') || answerLower.includes('born in') || answerLower.includes('come from')
-    }
-    
-    if (questionLower.includes('what do you do') || questionLower.includes('your job') || questionLower.includes('work')) {
-      return answerLower.includes('work') || answerLower.includes('job') || answerLower.includes('student') || answerLower.includes('study')
-    }
-    
-    if (questionLower.includes('hobbies') || questionLower.includes('free time') || questionLower.includes('like to do')) {
-      return answerLower.includes('like') || answerLower.includes('enjoy') || answerLower.includes('hobby') || answerLower.includes('play') || answerLower.includes('watch')
-    }
-    
-    // For job interview questions
-    if (questionLower.includes('why do you want this job') || questionLower.includes('why should we hire')) {
-      return answerLower.includes('because') || answerLower.includes('experience') || answerLower.includes('skills') || answerLower.includes('good at')
-    }
-    
-    // Check for at least some keyword overlap
-    let relevantWords = 0
-    questionKeywords.forEach(keyword => {
-      if (answerLower.includes(keyword)) {
-        relevantWords++
+    // Check if any key terms are present in answer
+    let keyTermMatches = 0
+    questionTerms.forEach(term => {
+      if (answerLower.includes(term)) {
+        keyTermMatches++
       }
     })
     
-    return relevantWords > 0 || answerLower.length > 20 // Give benefit of doubt for longer answers
+    // Calculate relevance ratio
+    const relevanceRatio = keyTermMatches / Math.max(questionTerms.length, 1)
+    
+    // Check for question type specific relevance
+    if (questionLower.includes('introduce yourself') || questionLower.includes('tell me about yourself')) {
+      // For introductions, check for personal information
+      return /\b(name|i am|i'm|work|study|live)\b/.test(answerLower)
+    }
+    
+    if (questionLower.includes('what do you do') || questionLower.includes('your job')) {
+      // For job questions, check for occupation terms
+      return /\b(work|job|profession|company|business|study|school|university)\b/.test(answerLower)
+    }
+    
+    if (questionLower.includes('hobby') || questionLower.includes('free time')) {
+      // For hobby questions, check for activity terms
+      return /\b(like|enjoy|love|play|watch|read|listen|hobby|interest)\b/.test(answerLower)
+    }
+    
+    // General relevance check
+    return relevanceRatio >= 0.3 || this.checkSemanticRelevance(questionLower, answerLower)
+  }
+  
+  checkSemanticRelevance(question, answer) {
+    // Check for semantic similarity using common patterns
+    const patterns = {
+      location: {
+        question: /\b(where|location|place|city|country)\b/,
+        answer: /\b(in|at|near|live|stay|from)\b/
+      },
+      time: {
+        question: /\b(when|time|schedule|routine)\b/,
+        answer: /\b(at|on|during|morning|afternoon|evening|night)\b/
+      },
+      reason: {
+        question: /\b(why|reason|because)\b/,
+        answer: /\b(because|since|as|want|need)\b/
+      },
+      method: {
+        question: /\b(how|method|way)\b/,
+        answer: /\b(by|using|through|with)\b/
+      },
+      preference: {
+        question: /\b(favorite|prefer|like best)\b/,
+        answer: /\b(like|love|enjoy|prefer)\b/
+      },
+      frequency: {
+        question: /\b(how often|frequency|usually|always)\b/,
+        answer: /\b(always|usually|sometimes|often|every|daily|weekly)\b/
+      },
+      duration: {
+        question: /\b(how long|duration|years|months)\b/,
+        answer: /\b(for|since|years|months|weeks|days)\b/
+      }
+    }
+    
+    // Check if question and answer share similar pattern types
+    for (const type in patterns) {
+      if (patterns[type].question.test(question) && patterns[type].answer.test(answer)) {
+        return true
+      }
+    }
+    
+    return false
   }
 
   // Extract key words from question
@@ -1338,6 +1423,17 @@ class AIService {
   }
 
   calculateRelevanceScore(question, userAnswer, difficultyLevel = 'advanced') {
+    // Validate inputs
+    if (!question || typeof question !== 'string') {
+      console.error('Invalid question input:', question)
+      return 0
+    }
+    
+    if (!userAnswer || typeof userAnswer !== 'string') {
+      console.error('Invalid userAnswer input:', userAnswer)
+      return 0
+    }
+    
     let score = 0 // Start from 0 - must earn relevance points
     
     const questionLower = question.toLowerCase()
@@ -1947,6 +2043,980 @@ class AIService {
     factors.push('cultural context learning', 'real-world application')
     
     return factors
+  }
+
+  // ===== INTELLIGENT FEEDBACK SYSTEM =====
+  
+  /**
+   * Enhanced analysis with personalized feedback using AI
+   */
+  async analyzeAnswerIntelligent(question, userAnswer, context = {}) {
+    try {
+      // Validate inputs
+      if (!question || typeof question !== 'string') {
+        console.error('Invalid question input:', question)
+        return this.createSomaliErrorResponse()
+      }
+      
+      if (!userAnswer || typeof userAnswer !== 'string' || userAnswer.trim().length === 0) {
+        return this.createSomaliNoAnswerResponse()
+      }
+
+      console.log('🤖 Attempting AI-powered feedback analysis...')
+
+      try {
+        // Try AI analysis first
+        const aiAnalysis = await this.getAIFeedbackAnalysis(question, userAnswer, context)
+        
+        // Parse AI response and structure it properly
+        const structuredAnalysis = this.parseAIAnalysis(aiAnalysis)
+        
+        // Calculate scores based on AI analysis
+        const scores = this.calculateScoresFromAI(structuredAnalysis)
+        
+        // Generate Somali feedback based on AI analysis
+        const somaliFeedback = await this.generateSomaliFeedback(structuredAnalysis, scores)
+        
+        console.log('✅ AI analysis successful!')
+        
+        return {
+          // Standard scores
+          overallScore: scores.overall,
+          grammarScore: scores.grammar,
+          fluencyScore: scores.fluency,
+          pronunciationScore: scores.pronunciation,
+          relevanceScore: scores.relevance,
+          passed: scores.overall >= (context.passRate || 70),
+          
+          // Enhanced feedback
+          feedback: structuredAnalysis.english_feedback || "Good effort! Keep practicing.",
+          feedback_somali: somaliFeedback,
+          encouragement_somali: structuredAnalysis.encouragement_somali || "🌟 Sii wad dadaalka!",
+          
+          // Detailed analysis
+          detailed_feedback: {
+            content_analysis: structuredAnalysis.content_analysis || {},
+            error_patterns: structuredAnalysis.error_patterns || {},
+            emotional_state: structuredAnalysis.emotional_state || {},
+            coaching_notes: structuredAnalysis.coaching_notes || {},
+            improvement_plan: structuredAnalysis.improvement_plan || {},
+            personalized_praise: structuredAnalysis.personalized_praise || [],
+            specific_corrections: structuredAnalysis.specific_corrections || [],
+            cultural_coaching: structuredAnalysis.cultural_coaching || [],
+            next_steps: structuredAnalysis.next_steps || []
+          }
+        }
+      } catch (aiError) {
+        console.warn('⚠️ AI analysis failed, using enhanced rule-based analysis:', aiError.message)
+        
+        // Fall back to enhanced rule-based analysis
+        return this.analyzeAnswerEnhanced(question, userAnswer, context)
+      }
+    } catch (error) {
+      console.error('Error in intelligent analysis:', error)
+      // Final fallback to basic analysis
+      return this.analyzeAnswer(question, userAnswer, context)
+    }
+  }
+
+  /**
+   * Enhanced rule-based analysis as fallback when AI is unavailable
+   */
+  analyzeAnswerEnhanced(question, userAnswer, context = {}) {
+    console.log('🔧 Using enhanced rule-based analysis...')
+    
+    // Perform detailed content analysis
+    const contentAnalysis = this.analyzeContent(question, userAnswer, context)
+    
+    // Detect specific errors
+    const errorAnalysis = this.detectSpecificErrors(userAnswer)
+    
+    // Analyze emotional state
+    const emotionalState = this.detectEmotionalState(userAnswer)
+    
+    // Get question-specific coaching
+    const questionCoaching = this.getQuestionSpecificCoaching(question, userAnswer, contentAnalysis)
+    
+    // Calculate enhanced scores
+    const scores = this.calculateIntelligentScores(question, userAnswer, contentAnalysis, errorAnalysis, context)
+    
+    // Generate personalized feedback
+    const personalizedFeedback = this.generatePersonalizedFeedback(
+      question, userAnswer, contentAnalysis, errorAnalysis, 
+      emotionalState, questionCoaching, scores, context
+    )
+    
+    // Create improvement plan
+    const improvementPlan = this.createImprovementPlan(errorAnalysis, contentAnalysis, scores)
+    
+    console.log('✅ Enhanced rule-based analysis complete!')
+    
+    return {
+      // Standard scores
+      overallScore: scores.overall,
+      grammarScore: scores.grammar,
+      fluencyScore: scores.fluency,
+      pronunciationScore: scores.pronunciation,
+      relevanceScore: scores.relevance,
+      passed: scores.overall >= (context.passRate || 70),
+      
+      // Enhanced feedback
+      feedback: personalizedFeedback.english,
+      feedback_somali: personalizedFeedback.somali,
+      encouragement_somali: personalizedFeedback.encouragement,
+      
+      // Detailed analysis
+      detailed_feedback: {
+        content_analysis: contentAnalysis,
+        error_patterns: errorAnalysis,
+        emotional_state: emotionalState,
+        coaching_notes: {
+          strengths: personalizedFeedback.praise.filter((_, i) => i % 2 === 0), // English strengths
+          areas_for_improvement: personalizedFeedback.corrections.map(c => c.explanation),
+          cultural_tips: personalizedFeedback.cultural.map(c => c.tip),
+          example_phrases: questionCoaching.example_phrases || []
+        },
+        improvement_plan: improvementPlan,
+        personalized_praise: personalizedFeedback.praise,
+        specific_corrections: personalizedFeedback.corrections,
+        cultural_coaching: personalizedFeedback.cultural,
+        next_steps: personalizedFeedback.nextSteps
+      }
+    }
+  }
+
+  /**
+   * Get comprehensive AI analysis of user's answer
+   */
+  async getAIFeedbackAnalysis(question, userAnswer, context = {}) {
+    const prompt = `You are an expert English teacher specializing in helping Somali speakers learn English. Analyze this student's response and provide comprehensive feedback.
+
+QUESTION: "${question}"
+STUDENT'S ANSWER: "${userAnswer}"
+CONTEXT: Learning level: ${context.difficultyLevel || 'intermediate'}, Category: ${context.category || 'general'}
+
+Please provide a detailed analysis in the following JSON format:
+
+{
+  "scores": {
+    "grammar": [0-100],
+    "fluency": [0-100], 
+    "relevance": [0-100],
+    "pronunciation_estimate": [0-100],
+    "overall": [0-100]
+  },
+  "content_analysis": {
+    "question_type": "string",
+    "mentioned_skills": ["array of skills mentioned"],
+    "personal_details": {"name_mentioned": bool, "origin_mentioned": bool, "profession_mentioned": bool},
+    "missing_elements": ["array of missing key elements"],
+    "content_richness_score": [0-100],
+    "answer_completeness": "complete|partial|incomplete"
+  },
+  "error_patterns": {
+    "grammar_errors": [{"error": "text", "correction": "text", "explanation": "text"}],
+    "somali_interference": [{"error": "text", "correction": "text", "explanation": "text"}],
+    "article_errors": [{"missing_article": "text", "suggestion": "text"}],
+    "verb_tense_errors": [{"error": "text", "correction": "text"}]
+  },
+  "emotional_state": {
+    "confidence_level": "low|medium|high",
+    "hesitation_markers": number,
+    "enthusiasm_level": "low|medium|high"
+  },
+  "coaching_notes": {
+    "strengths": ["array of specific strengths"],
+    "areas_for_improvement": ["array of specific areas"],
+    "cultural_tips": ["array of cultural advice"],
+    "example_phrases": ["array of better example phrases"]
+  },
+  "improvement_plan": {
+    "immediate_focus": ["array of immediate goals"],
+    "this_week": ["array of weekly goals"],
+    "next_steps": ["array of next learning steps"]
+  },
+  "english_feedback": "Detailed feedback in English",
+  "somali_feedback_key_points": ["array of key points for Somali translation"],
+  "encouragement_level": "high|medium|low"
+}
+
+IMPORTANT GUIDELINES:
+1. Be encouraging but honest about areas needing improvement
+2. Focus on practical, actionable advice
+3. Consider Somali-English language interference patterns
+4. Provide specific examples and corrections
+5. Score based on the student's level (be more lenient for beginners)
+6. If the answer is very short or unclear, focus on encouraging more complete responses
+
+Analyze thoroughly and provide constructive feedback that will help this Somali English learner improve.`
+
+    try {
+      const response = await this.makeOpenRouterRequest(
+        this.models.intelligent_feedback,
+        [{ role: 'user', content: prompt }],
+        { 
+          temperature: 0.3, // Lower temperature for more consistent analysis
+          max_tokens: 2000 
+        }
+      )
+      
+      return response
+    } catch (error) {
+      console.error('Error getting AI feedback analysis:', error)
+      
+      // Try fallback model
+      try {
+        const fallbackResponse = await this.makeOpenRouterRequest(
+          this.models.quick_feedback,
+          [{ role: 'user', content: prompt }],
+          { temperature: 0.3, max_tokens: 1500 }
+        )
+        return fallbackResponse
+      } catch (fallbackError) {
+        console.error('Fallback AI model also failed:', fallbackError)
+        throw fallbackError
+      }
+    }
+  }
+
+  /**
+   * Analyze content for personal details, skills, and context
+   */
+  analyzeContent(question, userAnswer, context) {
+    const analysis = {
+      question_type: 'general',
+      expected_elements: [],
+      question_elements_covered: [],
+      missing_elements: [],
+      mentioned_skills: [],
+      personal_details: {},
+      cultural_references: [],
+      content_richness_score: 0
+    }
+    
+    const questionLower = question.toLowerCase()
+    const answerLower = userAnswer.toLowerCase()
+    
+    // Determine question type and expected elements
+    if (questionLower.includes('introduce yourself') || questionLower.includes('tell me about yourself')) {
+      analysis.question_type = 'self_introduction'
+      analysis.expected_elements = ['name', 'background', 'interests', 'current_status']
+      
+      // Check for name mention
+      if (/my name is|i am|i'm/.test(answerLower)) {
+        analysis.question_elements_covered.push('name')
+      }
+      
+      // Check for background
+      if (/from|born|grew up|lived/.test(answerLower)) {
+        analysis.question_elements_covered.push('background')
+      }
+      
+      // Check for interests
+      if (/like|enjoy|love|interested in/.test(answerLower)) {
+        analysis.question_elements_covered.push('interests')
+      }
+      
+      // Check for current status
+      if (/currently|now|these days|at the moment/.test(answerLower)) {
+        analysis.question_elements_covered.push('current_status')
+      }
+    } else if (questionLower.includes('what do you do') || questionLower.includes('your job')) {
+      analysis.question_type = 'professional_introduction'
+      analysis.expected_elements = ['job_title', 'company', 'responsibilities', 'experience']
+      
+      // Check for job title
+      if (/work as|i am a|my job|position/.test(answerLower)) {
+        analysis.question_elements_covered.push('job_title')
+      }
+      
+      // Check for company mention
+      if (/company|organization|business|firm/.test(answerLower)) {
+        analysis.question_elements_covered.push('company')
+      }
+      
+      // Check for responsibilities
+      if (/responsible for|duties|handle|manage|work on/.test(answerLower)) {
+        analysis.question_elements_covered.push('responsibilities')
+      }
+      
+      // Check for experience
+      if (/years|experience|worked|been working/.test(answerLower)) {
+        analysis.question_elements_covered.push('experience')
+      }
+    } else if (questionLower.includes('hobby') || questionLower.includes('free time')) {
+      analysis.question_type = 'hobbies'
+      analysis.expected_elements = ['activities', 'frequency', 'reasons', 'enjoyment']
+      
+      // Check for activities
+      if (/play|read|watch|listen|do/.test(answerLower)) {
+        analysis.question_elements_covered.push('activities')
+      }
+      
+      // Check for frequency
+      if (/often|sometimes|usually|always|every|when/.test(answerLower)) {
+        analysis.question_elements_covered.push('frequency')
+      }
+      
+      // Check for reasons
+      if (/because|since|as|enjoy|love/.test(answerLower)) {
+        analysis.question_elements_covered.push('reasons')
+      }
+      
+      // Check for enjoyment expression
+      if (/fun|enjoy|love|great|amazing|interesting/.test(answerLower)) {
+        analysis.question_elements_covered.push('enjoyment')
+      }
+    }
+    
+    // Calculate missing elements
+    analysis.missing_elements = analysis.expected_elements.filter(
+      element => !analysis.question_elements_covered.includes(element)
+    )
+    
+    // Calculate content richness score
+    const wordCount = userAnswer.split(/\s+/).length
+    const minWords = 5
+    const optimalWords = 20
+    const lengthScore = Math.min((wordCount - minWords) / (optimalWords - minWords) * 100, 100)
+    
+    const coverageScore = analysis.expected_elements.length > 0
+      ? (analysis.question_elements_covered.length / analysis.expected_elements.length) * 100
+      : 50 // Default score for general questions
+      
+    const relevanceScore = this.checkRelevantContent(question, userAnswer) ? 100 : 10
+    
+    analysis.content_richness_score = Math.round(
+      (lengthScore * 0.3) + (coverageScore * 0.4) + (relevanceScore * 0.3)
+    )
+    
+    return analysis
+  }
+
+  /**
+   * Detect specific error patterns common to Somali speakers
+   */
+  detectSpecificErrors(userAnswer) {
+    const errors = {
+      grammar_errors: [],
+      article_errors: [],
+      verb_tense_errors: [],
+      word_order_errors: [],
+      somali_interference: [],
+      suggestions: []
+    }
+
+    // Common Somali interference patterns
+    const interferencePatterns = [
+      {
+        pattern: /I am come/gi,
+        correction: 'I come',
+        type: 'verb_form',
+        explanation: 'Use simple present "I come" not "I am come"',
+        somali_explanation: 'Isticmaal "I come" ee ma aha "I am come"'
+      },
+      {
+        pattern: /I am go/gi,
+        correction: 'I go',
+        type: 'verb_form',
+        explanation: 'Use simple present "I go" not "I am go"',
+        somali_explanation: 'Isticmaal "I go" ee ma aha "I am go"'
+      },
+      {
+        pattern: /\b(\d+) o'clock\b/gi,
+        correction: 'at $1 o\'clock',
+        type: 'preposition',
+        explanation: 'Use "at" before time expressions',
+        somali_explanation: 'Isticmaal "at" ka hor waqtiga'
+      }
+    ]
+
+    // Check for interference patterns
+    interferencePatterns.forEach(pattern => {
+      if (pattern.pattern.test(userAnswer)) {
+        errors.somali_interference.push({
+          original: userAnswer.match(pattern.pattern)?.[0],
+          correction: pattern.correction,
+          type: pattern.type,
+          explanation: pattern.explanation,
+          somali_explanation: pattern.somali_explanation
+        })
+      }
+    })
+
+    // Check for missing articles
+    const articlePattern = /\b(teacher|doctor|student|manager)\b/gi
+    const matches = userAnswer.match(articlePattern)
+    if (matches) {
+      matches.forEach(match => {
+        const beforeWord = userAnswer.toLowerCase().indexOf(match.toLowerCase()) > 0 ? 
+          userAnswer.charAt(userAnswer.toLowerCase().indexOf(match.toLowerCase()) - 2) : ''
+        
+        if (!/\b(a|an|the)\s/i.test(userAnswer.substring(
+          Math.max(0, userAnswer.toLowerCase().indexOf(match.toLowerCase()) - 5),
+          userAnswer.toLowerCase().indexOf(match.toLowerCase())
+        ))) {
+          errors.article_errors.push({
+            word: match,
+            suggestion: `a ${match.toLowerCase()}`,
+            explanation: `Add "a" before "${match}"`,
+            somali_explanation: `Ku dar "a" ka hor "${match}"`
+          })
+        }
+      })
+    }
+
+    // Check for verb tense consistency
+    if (/am going.*every day|go.*right now/i.test(userAnswer)) {
+      errors.verb_tense_errors.push({
+        issue: 'tense_inconsistency',
+        explanation: 'Use present simple for routines, present continuous for current actions',
+        somali_explanation: 'Isticmaal present simple caadooyinka, present continuous ficillada hadda socda'
+      })
+    }
+
+    return errors
+  }
+
+  /**
+   * Detect emotional state and confidence level
+   */
+  detectEmotionalState(userAnswer) {
+    const state = {
+      confidence_level: 'medium',
+      hesitation_markers: 0,
+      enthusiasm_markers: 0,
+      nervousness_indicators: [],
+      speaking_pace: 'normal',
+      emotional_tone: 'neutral'
+    }
+
+    // Hesitation markers
+    const hesitationWords = ['um', 'uh', 'er', 'well', 'you know']
+    hesitationWords.forEach(word => {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi')
+      const matches = userAnswer.match(regex)
+      if (matches) {
+        state.hesitation_markers += matches.length
+      }
+    })
+
+    // Enthusiasm markers
+    const enthusiasmWords = ['love', 'really like', 'enjoy', 'excited', 'amazing', 'wonderful']
+    enthusiasmWords.forEach(word => {
+      if (userAnswer.toLowerCase().includes(word)) {
+        state.enthusiasm_markers++
+      }
+    })
+
+    // Determine confidence level
+    if (state.hesitation_markers > 3) {
+      state.confidence_level = 'low'
+      state.nervousness_indicators.push('frequent_hesitation')
+    } else if (state.hesitation_markers === 0 && state.enthusiasm_markers > 0) {
+      state.confidence_level = 'high'
+    }
+
+    // Short answers might indicate nervousness
+    if (userAnswer.split(' ').length < 10) {
+      state.nervousness_indicators.push('very_short_answer')
+      if (state.confidence_level === 'medium') {
+        state.confidence_level = 'low'
+      }
+    }
+
+    return state
+  }
+
+  /**
+   * Get question-specific coaching advice
+   */
+  getQuestionSpecificCoaching(question, userAnswer, contentAnalysis) {
+    const coaching = {
+      question_type: contentAnalysis.question_type,
+      coaching_tips: [],
+      cultural_advice: [],
+      structure_suggestions: [],
+      example_phrases: []
+    }
+
+    switch (contentAnalysis.question_type) {
+      case 'self_introduction':
+        coaching.coaching_tips = [
+          'Include your name, origin, profession, and interests',
+          'Speak with confidence about your background',
+          'Add personal details that make you memorable'
+        ]
+        coaching.cultural_advice = [
+          'In Western culture, it\'s good to mention achievements',
+          'Eye contact and confident tone are important',
+          'Brief personal interests show personality'
+        ]
+        coaching.example_phrases = [
+          'My name is...',
+          'I come from...',
+          'I work as a...',
+          'In my free time, I enjoy...'
+        ]
+        break
+
+      case 'daily_routine':
+        coaching.coaching_tips = [
+          'Use time expressions clearly',
+          'Describe activities in chronological order',
+          'Include details about work, meals, and leisure'
+        ]
+        coaching.example_phrases = [
+          'I wake up at...',
+          'After breakfast, I...',
+          'During my lunch break...',
+          'In the evening, I usually...'
+        ]
+        break
+
+      case 'family_description':
+        coaching.coaching_tips = [
+          'Mention family members and their roles',
+          'Describe what they do for work',
+          'Share family activities you enjoy together'
+        ]
+        break
+    }
+
+    return coaching
+  }
+
+  /**
+   * Calculate intelligent scores based on multiple factors
+   */
+  calculateIntelligentScores(question, userAnswer, contentAnalysis, errorAnalysis, context) {
+    const scores = {
+      relevance: 0,
+      grammar: 0,
+      fluency: 0,
+      pronunciation: 85, // Default since we can't analyze audio pronunciation
+      overall: 0
+    }
+
+    // Relevance Score - if content is not relevant, all scores should be affected
+    scores.relevance = Math.min(100, Math.max(0, contentAnalysis.content_richness_score || 0))
+    const isRelevant = this.checkRelevantContent(question, userAnswer)
+    
+    if (!isRelevant) {
+      // If answer is completely irrelevant, severely penalize all scores
+      scores.relevance = Math.min(scores.relevance, 10) // Max 10% for irrelevant answers
+      scores.grammar *= 0.2 // Reduce grammar score by 80%
+      scores.fluency *= 0.2 // Reduce fluency score by 80%
+      scores.pronunciation *= 0.5 // Reduce pronunciation score by 50%
+    }
+
+    // Grammar Score (enhanced with error detection)
+    const totalErrors = 
+      (errorAnalysis.grammar_errors?.length || 0) +
+      (errorAnalysis.article_errors?.length || 0) +
+      (errorAnalysis.verb_tense_errors?.length || 0) +
+      (errorAnalysis.somali_interference?.length || 0)
+
+    const wordCount = userAnswer.split(' ').length
+    const errorRate = totalErrors / Math.max(wordCount / 10, 1) // errors per 10 words
+    scores.grammar = Math.max(0, 100 - (errorRate * 20))
+
+    // Fluency Score (enhanced with emotional state)
+    const baseLength = userAnswer.split(' ').length
+    let fluencyScore = Math.min(baseLength / 20 * 100, 100) // 20 words = good fluency
+
+    // Adjust for hesitation and repetition
+    if (errorAnalysis.hesitation_markers > 2) {
+      fluencyScore -= 15
+    }
+    
+    // Check for repetitive content
+    const words = userAnswer.toLowerCase().split(/\s+/)
+    const uniqueWords = new Set(words)
+    if (words.length > 5 && uniqueWords.size / words.length < 0.5) {
+      fluencyScore *= 0.5 // Penalize heavy repetition
+    }
+
+    scores.fluency = Math.max(0, fluencyScore)
+
+    // Overall Score - ensure all individual scores are valid and weight them
+    scores.relevance = Math.min(100, Math.max(0, scores.relevance))
+    scores.grammar = Math.min(100, Math.max(0, scores.grammar))
+    scores.fluency = Math.min(100, Math.max(0, scores.fluency))
+    scores.pronunciation = Math.min(100, Math.max(0, scores.pronunciation))
+
+    const weights = context.scoringWeights || {
+      relevance: 0.35,
+      grammar: 0.25,
+      fluency: 0.25,
+      pronunciation: 0.15
+    }
+
+    scores.overall = Math.min(100, Math.max(0, Math.round(
+      scores.relevance * weights.relevance +
+      scores.grammar * weights.grammar +
+      scores.fluency * weights.fluency +
+      scores.pronunciation * weights.pronunciation
+    )))
+
+    // If the answer is completely irrelevant, cap the overall score
+    if (!isRelevant) {
+      scores.overall = Math.min(scores.overall, 40) // Cap at 40% for irrelevant answers
+    }
+
+    return scores
+  }
+
+  /**
+   * Generate personalized feedback based on analysis
+   */
+  generatePersonalizedFeedback(question, userAnswer, contentAnalysis, errorAnalysis, emotionalState, questionCoaching, scores, context) {
+    const feedback = {
+      english: '',
+      somali: '',
+      encouragement: '',
+      praise: [],
+      corrections: [],
+      cultural: [],
+      nextSteps: []
+    }
+
+    // Generate personalized praise based on content
+    if (contentAnalysis.mentioned_skills.length > 0) {
+      const skill = contentAnalysis.mentioned_skills[0]
+      feedback.praise.push(`Great that you mentioned being a ${skill}! That's valuable information.`)
+      feedback.praise.push(`🎓 Waan ku faraxsanahay inaad ${skill} tahay! Waa macluumaad muhiim ah.`)
+    }
+
+    if (contentAnalysis.personal_details.origin_mentioned) {
+      feedback.praise.push(`Good job mentioning your background!`)
+      feedback.praise.push(`💫 Si fiican ayaad u sheegtay halka aad ka timid!`)
+    }
+
+    // Generate specific corrections
+    errorAnalysis.somali_interference.forEach(error => {
+      feedback.corrections.push({
+        error: error.original,
+        correction: error.correction,
+        explanation: error.explanation,
+        somali_explanation: error.somali_explanation
+      })
+    })
+
+    errorAnalysis.article_errors.forEach(error => {
+      feedback.corrections.push({
+        error: `Missing article before "${error.word}"`,
+        correction: error.suggestion,
+        explanation: error.explanation,
+        somali_explanation: error.somali_explanation
+      })
+    })
+
+    // Cultural coaching
+    if (contentAnalysis.question_type === 'self_introduction') {
+      feedback.cultural.push({
+        tip: 'In job interviews, mention specific achievements and skills',
+        somali: 'Waraysiyada shaqada, sheeg guulaha iyo xirfadaha gaarka ah'
+      })
+    }
+
+    // Next steps based on performance
+    if (scores.grammar < 70) {
+      feedback.nextSteps.push({
+        focus: 'Grammar Practice',
+        action: 'Practice verb tenses and articles',
+        somali: 'Ku celceli ficillada iyo articles-ka'
+      })
+    }
+
+    if (contentAnalysis.missing_elements.length > 0) {
+      feedback.nextSteps.push({
+        focus: 'Content Completeness',
+        action: `Add details about: ${contentAnalysis.missing_elements.join(', ')}`,
+        somali: `Ku dar faahfaahin: ${contentAnalysis.missing_elements.join(', ')}`
+      })
+    }
+
+    // Compile final feedback
+    const praiseText = feedback.praise.filter((_, i) => i % 2 === 0).join(' ')
+    const praiseSomali = feedback.praise.filter((_, i) => i % 2 === 1).join(' ')
+    
+    feedback.english = `${praiseText} ${feedback.corrections.map(c => c.explanation).join(' ')}`
+    feedback.somali = `${praiseSomali} ${feedback.corrections.map(c => c.somali_explanation).join(' ')}`
+    
+    // Encouragement based on emotional state
+    if (emotionalState.confidence_level === 'low') {
+      feedback.encouragement = '🌟 Aad ayaad u fiicantahay! Si fiican ayaad u hadlaysaa. Sii wad dadaalka!'
+    } else if (emotionalState.confidence_level === 'high') {
+      feedback.encouragement = '🎉 Aad ayaad ugu fiicantahay! Kalsooni weyn ayaad leedahay. Keep going!'
+    } else {
+      feedback.encouragement = '👍 Wad si fiican u socotaa! Wax yar oo dheeri ah ayaa kuu baahan.'
+    }
+
+    return feedback
+  }
+
+  /**
+   * Create improvement plan for next sessions
+   */
+  createImprovementPlan(errorAnalysis, contentAnalysis, scores) {
+    const plan = {
+      immediate_focus: [],
+      this_week: [],
+      next_week: [],
+      long_term: []
+    }
+
+    // Immediate focus based on errors
+    if (errorAnalysis.somali_interference.length > 0) {
+      plan.immediate_focus.push({
+        area: 'Somali Interference',
+        action: 'Practice English verb forms',
+        priority: 'high'
+      })
+    }
+
+    if (errorAnalysis.article_errors.length > 0) {
+      plan.immediate_focus.push({
+        area: 'Articles',
+        action: 'Practice a/an/the before nouns',
+        priority: 'medium'
+      })
+    }
+
+    // Weekly goals
+    if (scores.relevance < 70) {
+      plan.this_week.push({
+        goal: 'Improve answer completeness',
+        target: 'Include all question elements',
+        practice: 'Practice with similar questions daily'
+      })
+    }
+
+    return plan
+  }
+
+  /**
+   * Parse AI analysis response and structure it properly
+   */
+  parseAIAnalysis(aiResponse) {
+    try {
+      // If the response is already an object, use it directly
+      if (typeof aiResponse === 'object' && aiResponse !== null) {
+        return aiResponse
+      }
+
+      // If it's a string, try to parse as JSON
+      if (typeof aiResponse === 'string') {
+        // Clean up the response - remove any markdown formatting
+        let cleanResponse = aiResponse.trim()
+        if (cleanResponse.startsWith('```json')) {
+          cleanResponse = cleanResponse.replace(/```json\s*/, '').replace(/```\s*$/, '')
+        } else if (cleanResponse.startsWith('```')) {
+          cleanResponse = cleanResponse.replace(/```\s*/, '').replace(/```\s*$/, '')
+        }
+
+        try {
+          return JSON.parse(cleanResponse)
+        } catch (parseError) {
+          console.warn('Failed to parse AI response as JSON:', parseError)
+          // Try to extract JSON from the response
+          const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            return JSON.parse(jsonMatch[0])
+          }
+        }
+      }
+
+      // Fallback: create a basic structure
+      console.warn('Could not parse AI response, using fallback structure')
+      return this.createFallbackAnalysis(aiResponse)
+    } catch (error) {
+      console.error('Error parsing AI analysis:', error)
+      return this.createFallbackAnalysis(aiResponse)
+    }
+  }
+
+  /**
+   * Create fallback analysis structure when AI parsing fails
+   */
+  createFallbackAnalysis(originalResponse) {
+    return {
+      scores: {
+        grammar: 75,
+        fluency: 70,
+        relevance: 80,
+        pronunciation_estimate: 75,
+        overall: 75
+      },
+      content_analysis: {
+        question_type: 'general',
+        mentioned_skills: [],
+        personal_details: {},
+        missing_elements: [],
+        content_richness_score: 70,
+        answer_completeness: 'partial'
+      },
+      error_patterns: {
+        grammar_errors: [],
+        somali_interference: [],
+        article_errors: [],
+        verb_tense_errors: []
+      },
+      emotional_state: {
+        confidence_level: 'medium',
+        hesitation_markers: 0,
+        enthusiasm_level: 'medium'
+      },
+      coaching_notes: {
+        strengths: ['Attempted to answer the question'],
+        areas_for_improvement: ['Continue practicing'],
+        cultural_tips: [],
+        example_phrases: []
+      },
+      improvement_plan: {
+        immediate_focus: ['Keep practicing'],
+        this_week: ['Practice daily'],
+        next_steps: ['Try more complex questions']
+      },
+      english_feedback: typeof originalResponse === 'string' ? originalResponse : 'Good effort! Keep practicing.',
+      somali_feedback_key_points: ['Sii wad dadaalka'],
+      encouragement_level: 'medium'
+    }
+  }
+
+  /**
+   * Calculate scores from AI analysis
+   */
+  calculateScoresFromAI(structuredAnalysis) {
+    const scores = {
+      grammar: 75,
+      fluency: 70,
+      relevance: 80,
+      pronunciation: 75,
+      overall: 75
+    }
+
+    try {
+      if (structuredAnalysis.scores) {
+        scores.grammar = Math.min(100, Math.max(0, structuredAnalysis.scores.grammar || 75))
+        scores.fluency = Math.min(100, Math.max(0, structuredAnalysis.scores.fluency || 70))
+        scores.relevance = Math.min(100, Math.max(0, structuredAnalysis.scores.relevance || 80))
+        scores.pronunciation = Math.min(100, Math.max(0, structuredAnalysis.scores.pronunciation_estimate || 75))
+        scores.overall = Math.min(100, Math.max(0, structuredAnalysis.scores.overall || 75))
+      }
+
+      // If overall score is missing, calculate it
+      if (!structuredAnalysis.scores?.overall) {
+        scores.overall = Math.round(
+          (scores.grammar * 0.3) +
+          (scores.fluency * 0.25) +
+          (scores.relevance * 0.3) +
+          (scores.pronunciation * 0.15)
+        )
+      }
+    } catch (error) {
+      console.error('Error calculating scores from AI analysis:', error)
+    }
+
+    return scores
+  }
+
+  /**
+   * Generate Somali feedback based on AI analysis
+   */
+  async generateSomaliFeedback(structuredAnalysis, scores) {
+    try {
+      // First, try to use AI to generate proper Somali feedback
+      const somaliFeedbackPrompt = `Translate the following English feedback into natural, encouraging Somali for an English learner:
+
+English feedback: "${structuredAnalysis.english_feedback || 'Good effort! Keep practicing.'}"
+
+Key points to include in Somali:
+${structuredAnalysis.somali_feedback_key_points ? structuredAnalysis.somali_feedback_key_points.map(point => `- ${point}`).join('\n') : '- Sii wad dadaalka'}
+
+Encouragement level: ${structuredAnalysis.encouragement_level || 'medium'}
+
+Please provide natural, encouraging Somali feedback that:
+1. Acknowledges the student's effort
+2. Highlights specific strengths
+3. Provides gentle guidance for improvement
+4. Uses appropriate Somali expressions for encouragement
+5. Keeps the tone positive and motivating
+
+Return only the Somali text, no explanations.`
+
+      try {
+        const somaliFeedback = await this.makeOpenRouterRequest(
+          this.models.quick_feedback,
+          [{ role: 'user', content: somaliFeedbackPrompt }],
+          { temperature: 0.4, max_tokens: 300 }
+        )
+        
+        if (somaliFeedback && typeof somaliFeedback === 'string' && somaliFeedback.trim().length > 0) {
+          return somaliFeedback.trim()
+        }
+      } catch (aiError) {
+        console.warn('AI Somali translation failed, using fallback:', aiError)
+      }
+
+      // Fallback: Generate Somali feedback based on scores and analysis
+      return this.generateFallbackSomaliFeedback(structuredAnalysis, scores)
+    } catch (error) {
+      console.error('Error generating Somali feedback:', error)
+      return this.generateFallbackSomaliFeedback(structuredAnalysis, scores)
+    }
+  }
+
+  /**
+   * Generate fallback Somali feedback when AI translation fails
+   */
+  generateFallbackSomaliFeedback(structuredAnalysis, scores) {
+    let feedback = ''
+
+    // Encouragement based on overall score
+    if (scores.overall >= 80) {
+      feedback += '🌟 Aad ayaad u fiicantahay! Waxaad ku guulaystay inaadhawl si fiican. '
+    } else if (scores.overall >= 60) {
+      feedback += '👍 Si fiican ayaad u socotaa! Wax yar oo dheeri ah ayaa kuu baahan. '
+    } else {
+      feedback += '💪 Waan ku faraxsanahay dadaalkaaga! Sii wad, waad horumarayaa. '
+    }
+
+    // Grammar feedback
+    if (scores.grammar >= 80) {
+      feedback += 'Grammar-kaagu wuu fiican yahay. '
+    } else if (scores.grammar >= 60) {
+      feedback += 'Grammar-kaaga waa la hagaajin karaa. '
+    } else {
+      feedback += 'Ku celceli grammar-ka - waa muhiim. '
+    }
+
+    // Fluency feedback
+    if (scores.fluency >= 80) {
+      feedback += 'Si dabacsan ayaad u hadlaysaa. '
+    } else if (scores.fluency >= 60) {
+      feedback += 'Hadalkaaaguu sii fiicnaan karaa. '
+    } else {
+      feedback += 'Ku celceli hadalkaa si aad u hesho kalsoonida. '
+    }
+
+    // Add specific encouragement based on analysis
+    if (structuredAnalysis.coaching_notes?.strengths?.length > 0) {
+      feedback += 'Waxyaabaha aad ku fiicantahay: '
+      feedback += structuredAnalysis.coaching_notes.strengths.slice(0, 2).join(', ') + '. '
+    }
+
+    // Add improvement suggestions
+    if (structuredAnalysis.coaching_notes?.areas_for_improvement?.length > 0) {
+      feedback += 'Waxa la hagaajin karo: '
+      feedback += structuredAnalysis.coaching_notes.areas_for_improvement.slice(0, 2).join(', ') + '. '
+    }
+
+    // Closing encouragement
+    feedback += 'Sii wad dadaalka - waad ku guulayn doontaa! 🚀'
+
+    return feedback
   }
 }
 
