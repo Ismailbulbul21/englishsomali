@@ -48,7 +48,7 @@ export const getCategories = async () => {
 export const getUserProgress = async (userId) => {
   const { data, error } = await supabase
     .from('user_progress')
-    .select('user_id, category_id, current_level, completed_levels, total_score, total_levels, started_at')
+    .select('user_id, category_id, current_level, completed_levels, total_score, started_at')
     .eq('user_id', userId)
   return { data, error }
 }
@@ -418,95 +418,94 @@ export const getChatMessages = async (roomId, limit = 20) => {
     // First, run cleanup to remove old messages from database
     await cleanupOldMessages()
     
-    // Use the new function that only returns recent messages
-  const { data, error } = await supabase
-      .rpc('get_recent_chat_messages', { 
-        room_uuid: roomId, 
-        message_limit: limit 
-      })
+    // Fetch messages first
+    const { data: messages, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: false })
+      .limit(limit * 2) // Get more to account for filtering
     
     if (error) {
       console.error('Error fetching recent messages:', error)
-      // Fallback to old method with client-side filtering
-      return getChatMessagesFallback(roomId, limit)
+      return { data: [], error }
     }
-  
-  // If we have messages, add user info
-  if (data && data.length > 0) {
-    const messagesWithUserInfo = data.map(message => {
-      // Generate a consistent user name based on user_id
-      const userIdHash = message.user_id.slice(-4) // Last 4 chars of user ID
-      const userName = `User ${userIdHash}`
+    
+    // Then fetch user profiles for all unique user IDs
+    const userIds = [...new Set(messages?.map(m => m.user_id).filter(Boolean))]
+    
+    let userProfiles = {}
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds)
       
-      return {
-        ...message,
-        user_profiles: {
-          full_name: userName
-        }
-      }
-    })
-      return { data: messagesWithUserInfo, error: null }
-  }
-  
-    return { data: [], error: null }
+      // Create a lookup map
+      profiles?.forEach(profile => {
+        userProfiles[profile.user_id] = profile
+      })
+    }
+    
+    // Add user profiles to messages
+    const messagesWithProfiles = messages?.map(message => ({
+      ...message,
+      user_profiles: userProfiles[message.user_id] || null
+    }))
+    
+    // Filter messages by age on client side
+    const now = new Date()
+    const filteredMessages = messagesWithProfiles?.filter(message => {
+      const messageAge = new Date(message.created_at)
+      const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
+      
+      // Both text and voice messages: only show if less than 24 hours old
+      return hoursDiff < 24
+    }).slice(0, limit) || []
+    
+    return { data: filteredMessages, error: null }
   } catch (error) {
     console.error('Error in getChatMessages:', error)
-    // Fallback to old method with client-side filtering
-    return getChatMessagesFallback(roomId, limit)
-  }
-}
-
-// Fallback method with client-side filtering
-const getChatMessagesFallback = async (roomId, limit = 20) => {
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .select('*')
-    .eq('room_id', roomId)
-    .order('created_at', { ascending: false })
-    .limit(limit * 2) // Get more to account for filtering
-  
-  if (error) {
     return { data: [], error }
   }
-  
-  // Filter messages by age on client side
-  const now = new Date()
-  const filteredMessages = data?.filter(message => {
-    const messageAge = new Date(message.created_at)
-    const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
-    
-    // Both text and voice messages: only show if less than 24 hours old
-    return hoursDiff < 24
-  }).slice(0, limit) || []
-  
-  // Add user info
-  const messagesWithUserInfo = filteredMessages.map(message => {
-    const userIdHash = message.user_id.slice(-4)
-    const userName = `User ${userIdHash}`
-    
-    return {
-      ...message,
-      user_profiles: {
-        full_name: userName
-      }
-    }
-  })
-  
-  return { data: messagesWithUserInfo, error: null }
 }
 
 export const sendChatMessage = async (roomId, userId, message, messageType = 'text', metadata = {}) => {
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert([{
-      room_id: roomId,
-      user_id: userId,
-      message,
-      message_type: messageType,
-      metadata
-    }])
-    .select()
-  return { data, error }
+  try {
+    // Insert the message
+    const { data: messageData, error: insertError } = await supabase
+      .from('chat_messages')
+      .insert([{
+        room_id: roomId,
+        user_id: userId,
+        message,
+        message_type: messageType,
+        metadata
+      }])
+      .select()
+    
+    if (insertError) {
+      return { data: null, error: insertError }
+    }
+    
+    // Fetch user profile separately
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_name')
+      .eq('user_id', userId)
+      .single()
+    
+    // Add profile to the message data
+    const messageWithProfile = messageData?.[0] ? {
+      ...messageData[0],
+      user_profiles: profile
+    } : null
+    
+    return { data: messageWithProfile ? [messageWithProfile] : [], error: null }
+  } catch (error) {
+    console.error('Error sending message:', error)
+    return { data: null, error }
+  }
 }
 
 // Voice message functions
@@ -739,6 +738,103 @@ export const getUserLevelProgress = async (userId, levelId) => {
   return { data, error }
 }
 
+// Track user presence on specific learning paths
+export const trackUserPresence = async (userId, categoryId, action = 'join') => {
+  if (!userId || !categoryId) return { data: null, error: null }
+  
+  try {
+    if (action === 'join') {
+      // First try to update existing record
+      const { data: updateData, error: updateError } = await supabase
+        .from('user_presence')
+        .update({
+          last_seen: new Date().toISOString(),
+          is_active: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+        .eq('category_id', categoryId)
+        .select()
+      
+      // If no rows were updated, insert a new record
+      if (updateData && updateData.length === 0) {
+        const { data: insertData, error: insertError } = await supabase
+          .from('user_presence')
+          .insert({
+            user_id: userId,
+            category_id: categoryId,
+            last_seen: new Date().toISOString(),
+            is_active: true
+          })
+          .select()
+        
+        return { data: insertData, error: insertError }
+      }
+      
+      return { data: updateData, error: updateError }
+    } else if (action === 'leave') {
+      // Mark user as inactive
+      const { data, error } = await supabase
+        .from('user_presence')
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+        .eq('category_id', categoryId)
+        .select()
+      
+      return { data, error }
+    }
+  } catch (error) {
+    console.error('Error tracking user presence:', error)
+    return { data: null, error }
+  }
+}
+
+// Get users currently active on a specific learning path
+export const getActiveUsersOnPath = async (categoryId) => {
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    
+    // First get active user presence records
+    const { data: presenceData, error } = await supabase
+      .from('user_presence')
+      .select('user_id, last_seen')
+      .eq('category_id', categoryId)
+      .eq('is_active', true)
+      .gte('last_seen', fiveMinutesAgo)
+    
+    if (error || !presenceData?.length) {
+      return { data: [], error }
+    }
+    
+    // Then fetch user profiles for all active users
+    const userIds = presenceData.map(p => p.user_id)
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('user_id, full_name')
+      .in('user_id', userIds)
+    
+    // Create a lookup map
+    const profileMap = {}
+    profiles?.forEach(profile => {
+      profileMap[profile.user_id] = profile
+    })
+    
+    // Combine presence data with profiles
+    const activeUsersWithProfiles = presenceData.map(presence => ({
+      ...presence,
+      user_profiles: profileMap[presence.user_id] || null
+    }))
+    
+    return { data: activeUsersWithProfiles, error: null }
+  } catch (error) {
+    console.error('Error getting active users:', error)
+    return { data: [], error }
+  }
+}
+
 // Real-time subscriptions for chat
 export const subscribeToChatMessages = (roomId, callback) => {
   return supabase
@@ -748,7 +844,28 @@ export const subscribeToChatMessages = (roomId, callback) => {
       schema: 'public',
       table: 'chat_messages',
       filter: `room_id=eq.${roomId}`
-    }, callback)
+    }, async (payload) => {
+      // Fetch user profile for the new message
+      if (payload.new.user_id) {
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('full_name')
+            .eq('user_id', payload.new.user_id)
+            .single()
+          
+          // Add profile to the message
+          payload.new.user_profiles = profile || null
+        } catch (error) {
+          console.error('Error fetching user profile for new message:', error)
+          payload.new.user_profiles = null
+        }
+      } else {
+        payload.new.user_profiles = null
+      }
+      
+      callback(payload)
+    })
     .subscribe()
 }
 
@@ -908,4 +1025,51 @@ export const getDemoAttempts = () => {
 
 export const isDemoMode = (user) => {
   return !user || user === null
+}
+
+// Get recent attempts for a specific question (for non-authenticated users to see examples)
+export const getRecentAttemptsForQuestion = async (levelId, questionId, limit = 3) => {
+  try {
+    // First get the attempts
+    const { data: attempts, error } = await supabase
+      .from('user_attempts')
+      .select('*')
+      .eq('level_id', levelId)
+      .eq('question_id', questionId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+    
+    if (!attempts?.length) {
+      return { data: [], error: null }
+    }
+    
+    // Then fetch user profiles for all unique user IDs
+    const userIds = [...new Set(attempts.map(a => a.user_id).filter(Boolean))]
+    
+    let userProfiles = {}
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds)
+      
+      // Create a lookup map
+      profiles?.forEach(profile => {
+        userProfiles[profile.user_id] = profile
+      })
+    }
+    
+    // Add user profiles to attempts
+    const attemptsWithProfiles = attempts.map(attempt => ({
+      ...attempt,
+      user_profiles: userProfiles[attempt.user_id] || null
+    }))
+    
+    return { data: attemptsWithProfiles, error: null }
+  } catch (error) {
+    console.error('Error fetching recent attempts:', error)
+    return { data: null, error }
+  }
 }

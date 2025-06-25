@@ -33,8 +33,11 @@ function AppContent() {
     <Router>
       <div className="min-h-screen bg-gray-50">
         <Routes>
+          {/* Root path redirects directly to dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          
           {/* Public Routes */}
-          <Route path="/" element={
+          <Route path="/home" element={
             <PublicRoute>
               <HomePage />
             </PublicRoute>
@@ -47,11 +50,12 @@ function AppContent() {
           
           {/* Open Access Routes (Demo Mode Supported) */}
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/learning/:categoryId" element={<SpeakingLearning />} />
           <Route path="/learn/:categoryId" element={<SpeakingLearning />} />
           <Route path="/speak/:categoryId" element={<SpeakingLearning />} />
           
           {/* Catch all route */}
-          <Route path="*" element={<Navigate to="/" />} />
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </div>
     </Router>

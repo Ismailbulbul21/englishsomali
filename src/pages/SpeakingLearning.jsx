@@ -14,18 +14,17 @@ import {
   getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages,
   getUserProgress, updateUserProgress, getRemainingVoiceMessages, 
   uploadVoiceMessage, sendVoiceMessage, filterRecentMessages, cleanupChatCache,
-  getDemoChatMessages, getDemoAttempts, isDemoMode
+  getRecentAttemptsForQuestion, trackUserPresence, getActiveUsersOnPath
 } from '../lib/supabase'
-import SignUpBanner from '../components/SignUpBanner'
-import DemoOverlay from '../components/DemoOverlay'
+
+
 
 const SpeakingLearning = () => {
   const { categoryId } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
   
-  // Demo mode detection
-  const isDemo = isDemoMode(user)
+
   
   // Core state
   const [category, setCategory] = useState(null)
@@ -68,7 +67,8 @@ const SpeakingLearning = () => {
   const [showNewUserGuide, setShowNewUserGuide] = useState(false)
   const [showResultPopup, setShowResultPopup] = useState(false)
   const [resultData, setResultData] = useState(null)
-  const [showBanner, setShowBanner] = useState(true)
+
+
   
   // Refs
   const mediaRecorderRef = useRef(null)
@@ -83,9 +83,20 @@ const SpeakingLearning = () => {
     loadCategoryAndLevels()
     loadGroupRoom()
     checkIfNewUser()
+    
+    // Track user presence on this learning path
+    if (user?.id && categoryId) {
+      trackUserPresence(user.id, categoryId, 'join')
+    }
+    
     return () => {
       // Cleanup function to prevent memory leaks
       console.log('Cleaning up SpeakingLearning component')
+      
+      // Track user leaving this learning path
+      if (user?.id && categoryId) {
+        trackUserPresence(user.id, categoryId, 'leave')
+      }
       
       if (chatSubscriptionRef.current) {
         console.log('Unsubscribing from chat')
@@ -180,6 +191,24 @@ const SpeakingLearning = () => {
     return () => clearInterval(cleanupInterval)
   }, [groupRoom])
 
+  // Periodic update of online users count every 30 seconds
+  useEffect(() => {
+    if (!categoryId) return
+
+    const updateOnlineCount = async () => {
+      const activeCount = await getActiveUsersCount()
+      setOnlineUsers(activeCount)
+    }
+
+    // Update immediately
+    updateOnlineCount()
+    
+    // Then update every 30 seconds
+    const intervalId = setInterval(updateOnlineCount, 30000)
+
+    return () => clearInterval(intervalId)
+  }, [categoryId, user])
+
   const loadCategoryAndLevels = async () => {
     try {
       const { data: categories, error: categoriesError } = await getCategories()
@@ -214,26 +243,25 @@ const SpeakingLearning = () => {
 
   // Initialize user progress when starting a category
   const initializeUserProgress = async (category, levels) => {
+    if (!user?.id) {
+      // Non-authenticated users don't need progress initialization
+      return
+    }
+
     try {
       // Check if user already has progress for this category
       const { data: existingProgress } = await getUserProgress(user.id)
-      const hasProgress = existingProgress?.some(p => p.category_id === category.id)
+      const categoryProgress = existingProgress?.find(p => p.category_id === category.id)
       
-      if (!hasProgress) {
-        // Initialize progress for new users
-        const totalLevels = levels?.length || 10 // Default to 10 if not specified
+      if (!categoryProgress) {
+        // Create initial progress
         const progressData = {
-          user_id: user.id,
-          category_id: category.id,
           current_level: 1,
           completed_levels: [],
-          total_score: 0,
-          total_levels: totalLevels,
-          started_at: new Date().toISOString()
+          total_score: 0
         }
         
         await updateUserProgress(user.id, category.id, progressData)
-        console.log('Initialized progress for category:', category.name)
       }
     } catch (error) {
       console.error('Error initializing user progress:', error)
@@ -254,23 +282,13 @@ const SpeakingLearning = () => {
     if (!groupRoom) return
     
     try {
-      if (isDemo) {
-        // Use demo data for non-authenticated users
-        const demoMessages = getDemoChatMessages(groupRoom.id)
-        setChatMessages(demoMessages)
-        setOnlineUsers(7) // Show active demo community
-        return
-      }
-
+      // Always load real messages for both authenticated and non-authenticated users
       // First clean up localStorage cache for this room
       const cachedFilteredMessages = cleanupChatCache(groupRoom.id)
       
       // Load from cleaned localStorage first for instant display
       if (cachedFilteredMessages.length > 0) {
         setChatMessages(cachedFilteredMessages)
-            // Update online count from cached messages
-        const activeCount = getActiveUsersCount(cachedFilteredMessages)
-            setOnlineUsers(activeCount)
       }
 
       // Then load fresh data from server (this now includes automatic cleanup)
@@ -291,17 +309,18 @@ const SpeakingLearning = () => {
         
         // Cache filtered messages for persistence
         localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(filteredMessages))
-        
-        // Update online users count based on recent activity
-        setOnlineUsers(getActiveUsersCount(filteredMessages))
       } else {
-        // No messages, reset to just current user
+        // No messages, reset to empty
         setChatMessages([])
-        setOnlineUsers(1)
       }
+      
+      // Update online users count based on real presence tracking
+      const activeCount = await getActiveUsersCount()
+      setOnlineUsers(activeCount)
     } catch (error) {
       console.error('Error loading chat messages:', error)
-      setOnlineUsers(1) // Fallback to just current user
+      const activeCount = await getActiveUsersCount()
+      setOnlineUsers(activeCount)
     }
   }
 
@@ -311,7 +330,7 @@ const SpeakingLearning = () => {
     console.log('Setting up chat subscription for room:', groupRoom.id)
     setConnectionStatus('connecting')
     
-    chatSubscriptionRef.current = subscribeToChatMessages(groupRoom.id, (payload) => {
+    chatSubscriptionRef.current = subscribeToChatMessages(groupRoom.id, async (payload) => {
       setConnectionStatus('connected')
       
       // Check if the new message is within age limits (24 hours for both text and voice)
@@ -344,11 +363,12 @@ const SpeakingLearning = () => {
           // Silent error handling
         }
         
-        // Update online count when new messages arrive
-        setOnlineUsers(getActiveUsersCount(filteredMessages))
-        
         return filteredMessages
       })
+      
+      // Update online count when new messages arrive
+      const activeCount = await getActiveUsersCount()
+      setOnlineUsers(activeCount)
     })
     
     // Set connected status after a short delay if no errors
@@ -359,26 +379,23 @@ const SpeakingLearning = () => {
     }, 1000)
   }
 
-  const getActiveUsersCount = (messages) => {
-    if (!messages || messages.length === 0) return 1
+  const getActiveUsersCount = async () => {
+    if (!categoryId) return 1
     
-    // Get unique users who sent messages in the last 15 minutes (more realistic)
-    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
-    const recentMessages = messages.filter(msg => 
-      new Date(msg.created_at) > fifteenMinutesAgo
-    )
-    
-    const uniqueUsers = new Set(recentMessages.map(msg => msg.user_id))
-    
-    // Always include current user if they're active
-    uniqueUsers.add(user.id)
-    
-    // Show realistic numbers - if only current user, show 1-3 randomly to encourage interaction
-    if (uniqueUsers.size === 1) {
-      return Math.floor(Math.random() * 3) + 1 // 1-3 users
+    try {
+      // Get users currently active on this specific learning path
+      const { data: activeUsers } = await getActiveUsersOnPath(categoryId)
+      
+      if (activeUsers && activeUsers.length > 0) {
+        return activeUsers.length
+      }
+      
+      // Fallback: if no active users tracked, show at least current user or demo count
+      return user?.id ? 1 : Math.floor(Math.random() * 3) + 1
+    } catch (error) {
+      console.error('Error getting active users count:', error)
+      return user?.id ? 1 : Math.floor(Math.random() * 3) + 1
     }
-    
-    return uniqueUsers.size
   }
 
   const loadCurrentQuestion = async () => {
@@ -389,13 +406,10 @@ const SpeakingLearning = () => {
     const question = currentLevel.questions[questionIndex]
     setCurrentQuestion(question)
     
-    // Load user attempts for this question
+    // Load attempts for this question - show real data for everyone but only authenticated users can create new attempts
     try {
-      if (isDemo) {
-        // Use demo data for non-authenticated users
-        const demoAttempts = getDemoAttempts()
-        setAttempts(demoAttempts)
-      } else {
+      if (user?.id) {
+        // Authenticated users: load their own attempts
         const { data: userAttempts } = await getUserAttempts(user.id, currentLevel.id, question.id)
         setAttempts(userAttempts || [])
         
@@ -406,9 +420,20 @@ const SpeakingLearning = () => {
           setExampleAnswer(example)
           setShowHelp(true)
         }
+      } else {
+        // Non-authenticated users: show recent attempts from other users (read-only)
+        // This gives them a preview of what the feedback looks like
+        try {
+          const { data: recentAttempts } = await getRecentAttemptsForQuestion(currentLevel.id, question.id, 3)
+          setAttempts(recentAttempts || [])
+        } catch (error) {
+          // If we can't load recent attempts, show empty state
+          setAttempts([])
+        }
       }
     } catch (error) {
       console.error('Error loading question data:', error)
+      setAttempts([])
     }
 
     // Reset states for new question
@@ -439,108 +464,108 @@ const SpeakingLearning = () => {
   }
 
   const startRecording = async () => {
-    if (isDemo) {
-      // Show demo overlay for non-authenticated users
-      setShowHelp(true) // Reuse help modal for demo prompt
+    if (!user?.id) {
+      if (confirm('Sign up to practice speaking and get AI feedback on your pronunciation. Would you like to create an account?')) {
+        navigate('/auth')
+      }
       return
     }
 
+    if (isRecording) return
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      resetQuestionState()
       
-      mediaRecorderRef.current = new MediaRecorder(stream)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100
+        } 
+      })
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      })
+      
+      mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data)
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
       }
-
-      mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' })
+      
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         setAudioBlob(audioBlob)
-      }
-
-      // Speech recognition with better error handling
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-        recognitionRef.current = new SpeechRecognition()
         
-        recognitionRef.current.continuous = true
-        recognitionRef.current.interimResults = true
-        recognitionRef.current.lang = 'en-US'
-
-        recognitionRef.current.onresult = (event) => {
-          let finalTranscript = ''
-          
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript
-            }
-          }
-          
-          // Update transcript with final results
-          if (finalTranscript) {
-            setTranscript(prev => (prev + ' ' + finalTranscript).trim())
-          }
+        // Create transcript from blob for submission
+        const reader = new FileReader()
+        reader.onload = () => {
+          setTranscript('Audio recorded successfully')
+          setCanSubmit(true)
         }
-
-        recognitionRef.current.onerror = (event) => {
-          console.error('Speech recognition error:', event.error)
-          // Try to restart recognition after error
-          if (isRecording) {
-            setTimeout(() => {
-              try {
-                recognitionRef.current.start()
-              } catch (e) {
-                console.warn('Could not restart speech recognition after error:', e)
-              }
-            }, 1000)
-          }
-        }
-
-        recognitionRef.current.onend = () => {
-          // Restart recognition if still recording
-          if (isRecording) {
-            try {
-              recognitionRef.current.start()
-            } catch (e) {
-              console.warn('Could not restart speech recognition:', e)
-            }
-          }
-        }
-
-        recognitionRef.current.start()
-      } else {
-        alert('Speech recognition not supported in this browser. Please use Chrome or Edge.')
+        reader.readAsDataURL(audioBlob)
+        
+        // Cleanup
+        stream.getTracks().forEach(track => track.stop())
       }
-
-      mediaRecorderRef.current.start()
+      
+      // Start recording
+      mediaRecorder.start(100) // Collect data every 100ms
       setIsRecording(true)
+      setRecordingStatus('recording')
       setRecordingTime(0)
       
-      // Simple timer - no auto-submission, just safety maximum
+      // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1
-          const maxTime = 180 // 3 minutes maximum for safety
-          
-          // Warn user before hitting maximum
-          if (newTime >= maxTime - 10 && newTime < maxTime) {
-            console.log(`Recording will stop in ${maxTime - newTime} seconds`)
-          }
-          
-          // Safety stop at maximum time
-          if (newTime >= maxTime) {
+          if (newTime >= 180) { // 3 minutes max
             stopRecording()
-            return maxTime
+            return 180
           }
           return newTime
         })
       }, 1000)
-
+      
+      // Setup speech recognition for live transcript
+      if ('webkitSpeechRecognition' in window) {
+        const recognition = new window.webkitSpeechRecognition()
+        recognition.continuous = true
+        recognition.interimResults = true
+        recognition.lang = 'en-US'
+        
+        recognition.onresult = (event) => {
+          let finalTranscript = ''
+          let interimTranscript = ''
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' '
+            } else {
+              interimTranscript += transcript
+            }
+          }
+          
+          setTranscript(finalTranscript + interimTranscript)
+        }
+        
+        recognition.onerror = (event) => {
+          console.log('Speech recognition error:', event.error)
+        }
+        
+        recognitionRef.current = recognition
+        recognition.start()
+      }
+      
     } catch (error) {
       console.error('Error starting recording:', error)
-      alert('Could not access microphone. Please check permissions.')
+      alert('Could not access microphone. Please check permissions and try again.')
     }
   }
 
@@ -577,65 +602,67 @@ const SpeakingLearning = () => {
   }
 
   const analyzeAnswer = async () => {
-    if (!transcript.trim() || !currentQuestion) {
-      alert('Please record your answer before submitting.')
+    if (!user?.id) {
+      if (confirm('Sign up to get AI feedback on your pronunciation and grammar. Would you like to create an account?')) {
+        navigate('/auth')
+      }
       return
     }
 
+    if (!audioBlob || !currentQuestion || !currentLevel || isAnalyzing) return
+    
     setIsAnalyzing(true)
     
     try {
-      // Progressive difficulty based on level
-      const levelConfig = getLevelConfig(currentLevel.level_number)
+      const formData = new FormData()
+      formData.append('audio', audioBlob, 'recording.webm')
+      formData.append('question', currentQuestion.question_text)
+      formData.append('expected_answer', currentQuestion.expected_answer)
+      formData.append('level', currentLevel.level_number.toString())
+      formData.append('user_id', user.id)
+      formData.append('level_id', currentLevel.id)
+      formData.append('question_id', currentQuestion.id)
       
-      const analysis = await aiService.analyzeAnswer(
-        currentQuestion.text,
-        transcript,
-        {
-          category: category.name.toLowerCase(),
-          level: currentLevel.level_number,
-          recordingTime: recordingTime,
-          // Progressive scoring configuration
-          passRate: levelConfig.passRate,
-          scoringWeights: levelConfig.weights,
-          difficultyLevel: levelConfig.difficulty
-        }
-      )
-
-      setFeedback(analysis)
+      const { data, error } = await analyzeVoiceAnswer(formData)
       
-      // Show result popup
-      setResultData(analysis)
-      setShowResultPopup(true)
+      if (error) throw error
       
-      // Save attempt to database
+      setFeedback(data)
+      
+      // Store the attempt
       const attemptData = {
         user_id: user.id,
         level_id: currentLevel.id,
         question_id: currentQuestion.id,
-        attempt_number: attempts.length + 1,
-        score: analysis.overallScore,
-        transcript: transcript,
-        feedback_somali: analysis.feedback_somali,
-        passed: analysis.passed,
-        recording_duration: recordingTime
+        audio_url: data.audio_url,
+        transcript: data.transcript || transcript,
+        overall_score: data.overallScore,
+        grammar_score: data.grammarScore,
+        pronunciation_score: data.pronunciationScore,
+        fluency_score: data.fluencyScore,
+        feedback: data.feedback,
+        feedback_somali: data.feedback_somali,
+        encouragement_somali: data.encouragement_somali,
+        passed: data.passed
       }
-
-      await saveUserAttempt(attemptData)
       
-      // Auto progress sharing removed for cleaner chat experience
-
+      const { error: attemptError } = await saveUserAttempt(attemptData)
+      if (attemptError) {
+        console.error('Error saving attempt:', attemptError)
+      }
+      
+      // Update attempts list
+      setAttempts(prev => [...prev, attemptData])
+      
+      // Show result popup if configured to
+      if (data.passed || attempts.length >= 1) {
+        setResultData(data)
+        setShowResultPopup(true)
+      }
+      
     } catch (error) {
       console.error('Error analyzing answer:', error)
-      setFeedback({
-        overallScore: 50,
-        passed: false,
-        feedback_somali: "⚠️ Wax khalad ah ayaa dhacay. Dib u isku day.",
-        encouragement_somali: "🔄 Dib u isku day. Wax walba way hagaagi doontaa.",
-        improvements_somali: ["Dib u isku day", "Internet-ka hubi"],
-        strengths_somali: [],
-        pronunciation_tips: "Dib u isku day markale."
-      })
+      alert('Error analyzing your answer. Please try again.')
     } finally {
       setIsAnalyzing(false)
     }
@@ -802,13 +829,19 @@ const SpeakingLearning = () => {
   }
 
   const loadRemainingVoiceMessages = async () => {
+    if (!user) {
+      // Demo users get 10 voice messages for display
+      setRemainingVoiceMessages(10)
+      return
+    }
+
     try {
       const { data, error } = await getRemainingVoiceMessages(user.id)
-      if (!error && data !== null) {
-        setRemainingVoiceMessages(data)
-      }
+      if (error) throw error
+      setRemainingVoiceMessages(data || 10)
     } catch (error) {
       console.error('Error loading remaining voice messages:', error)
+      setRemainingVoiceMessages(10) // Fallback
     }
   }
 
@@ -898,53 +931,44 @@ const SpeakingLearning = () => {
   }
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !groupRoom) return
+    if (!newMessage.trim()) return
     
-    if (isDemo) {
-      // Prevent demo users from sending messages
-      setShowHelp(true) // Show signup prompt
+    if (!user?.id) {
+      // Simple signup prompt for demo users
+      if (confirm('Sign up to chat with other English learners and practice together. Would you like to create an account?')) {
+        navigate('/auth')
+      }
       return
     }
 
     const messageText = newMessage.trim()
-    const tempId = `temp_${Date.now()}`
-    const tempMessage = {
-      id: tempId,
-      message: messageText,
-      user_profiles: { full_name: user.user_metadata?.full_name || 'You' },
-      created_at: new Date().toISOString(),
-      user_id: user.id,
-      message_type: 'text',
-      metadata: {},
-      isTemporary: true
-    }
-
-    // Add message to local state immediately for better UX
-    setChatMessages(prev => [...prev, tempMessage])
     setNewMessage('')
-
-    try {
-      console.log('Sending message to room:', groupRoom.id)
-      const { data, error } = await sendChatMessage(groupRoom.id, user.id, messageText)
-      
-      if (error) {
-        throw error
+    
+    // Add temporary message for immediate UI feedback
+    const tempMessage = {
+      id: `temp-${Date.now()}`,
+      user_id: user.id,
+      message: messageText,
+      message_type: 'text',
+      created_at: new Date().toISOString(),
+      isTemporary: true,
+      user_profiles: {
+        full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'You'
       }
+    }
+    
+    setChatMessages(prev => [...prev, tempMessage])
+    
+    try {
+      const { data, error } = await sendChatMessage(groupRoom.id, user.id, messageText)
+      if (error) throw error
       
-      console.log('Message sent successfully:', data)
-      
-      // Remove temporary message since real-time will add the actual one
-      setChatMessages(prev => prev.filter(msg => msg.id !== tempId))
-      
+      // Remove temporary message and let real-time subscription handle the actual message
+      setChatMessages(prev => prev.filter(msg => msg.id !== tempMessage.id))
     } catch (error) {
       console.error('Error sending message:', error)
-      
-      // Remove the temporary message if sending failed
-      setChatMessages(prev => prev.filter(msg => msg.id !== tempId))
-      setNewMessage(messageText) // Restore the message text
-      
-      // Show user-friendly error message
-      alert('Failed to send message. Please check your connection and try again.')
+      // Remove temporary message on error
+      setChatMessages(prev => prev.filter(msg => msg.id !== tempMessage.id))
     }
   }
 
@@ -960,9 +984,14 @@ const SpeakingLearning = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading learning content...</p>
-          <p className="text-sm text-gray-500 mt-2">Category ID: {categoryId}</p>
-          {category && <p className="text-sm text-gray-500">Category: {category.name}</p>}
-          {currentLevel && <p className="text-sm text-gray-500">Level: {currentLevel.level_number}</p>}
+          <div className="text-sm text-gray-500 mt-4 space-y-1">
+            <p>Category ID: {categoryId}</p>
+            <p>Category loaded: {category ? '✅ ' + category.name : '❌ No'}</p>
+            <p>Current level: {currentLevel ? '✅ Level ' + currentLevel.level_number : '❌ No'}</p>
+            <p>Current question: {currentQuestion ? '✅ Yes' : '❌ No'}</p>
+            <p>Question index: {questionIndex}</p>
+            <p>Total questions: {currentLevel?.questions?.length || 0}</p>
+          </div>
         </div>
       </div>
     )
@@ -971,9 +1000,7 @@ const SpeakingLearning = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 relative overflow-hidden">
       {/* Demo Mode Banner */}
-      {isDemo && showBanner && (
-        <SignUpBanner onDismiss={() => setShowBanner(false)} />
-      )}
+
 
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
@@ -1148,15 +1175,7 @@ const SpeakingLearning = () => {
                   </div>
                 </div>
 
-                {/* Demo Overlay for Voice Recording */}
-                {isDemo && (
-                  <DemoOverlay 
-                    type="voice"
-                    className="absolute inset-0 rounded-3xl"
-                    title="Diiwaangeli si aad u celceliso codkaaga!"
-                    description="Hel jawaab celin AI ah oo ku saabsan dhawaaqida, naxwaha, iyo fasaxa."
-                  />
-                )}
+
               </div>
                 
                 {/* Status Message */}
@@ -1378,141 +1397,151 @@ const SpeakingLearning = () => {
             )}
           </div>
 
-          {/* Modern Chat Sidebar */}
+          {/* WhatsApp-Inspired Chat Sidebar */}
           {showChat && groupRoom && (
             <div className={`${showChat ? 'block' : 'hidden'} lg:w-1/3 w-full transition-all duration-500 mt-6 lg:mt-0`}>
-              <div className="bg-gradient-to-br from-white/95 via-blue-50/90 to-purple-50/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/30 h-fit lg:sticky lg:top-24 overflow-hidden relative">
-                {/* Modern Background Pattern */}
-                <div className="absolute inset-0 opacity-5">
-                  <div className="absolute top-4 left-4 w-20 h-20 bg-gradient-to-br from-blue-400 to-purple-400 rounded-full blur-xl"></div>
-                  <div className="absolute bottom-4 right-4 w-16 h-16 bg-gradient-to-br from-pink-400 to-orange-400 rounded-full blur-xl"></div>
-                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-400 rounded-full blur-2xl"></div>
-                </div>
-                {/* Chat Header */}
-                <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 p-3 sm:p-4 text-white relative overflow-hidden">
-                  {/* Header Background Animation */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse"></div>
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-100 h-fit lg:sticky lg:top-24 overflow-hidden relative">
+                
+                {/* WhatsApp-style Header */}
+                <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 text-white relative">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-base sm:text-lg">{category?.name} Chat</h3>
-                      <p className="text-blue-100 text-xs sm:text-sm">Connect with fellow learners</p>
+                    <div className="flex items-center space-x-3">
+                      <div className="relative">
+                        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                          <MessageCircle className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">{category?.name}</h3>
+                        <p className="text-green-100 text-sm">Community Chat</p>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2 bg-white/20 rounded-full px-2 sm:px-3 py-1">
-                      <div className={`w-2 h-2 rounded-full ${
-                        connectionStatus === 'connected' ? 'bg-green-400' : 
-                        connectionStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
-                      }`}></div>
-                      <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="text-xs sm:text-sm font-medium">{onlineUsers}</span>
+                    <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-1 bg-white/10 rounded-full px-2 py-1">
+                        <div className={`w-2 h-2 rounded-full ${
+                          connectionStatus === 'connected' ? 'bg-green-300 animate-pulse' : 
+                          connectionStatus === 'connecting' ? 'bg-yellow-300' : 'bg-red-300'
+                        }`}></div>
+                        <span className="text-xs font-medium">{onlineUsers} online</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              
-                {/* Chat Messages with Modern Background */}
+
+                {/* WhatsApp-style Chat Background */}
                 <div 
-                  className="h-80 sm:h-96 lg:h-[500px] overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 relative scroll-smooth"
+                  className="h-96 lg:h-[500px] overflow-y-auto p-4 relative"
                   style={{
-                    background: 'linear-gradient(145deg, rgba(255,255,255,0.9) 0%, rgba(240,248,255,0.8) 50%, rgba(245,243,255,0.9) 100%)',
+                    background: '#efeae2',
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4d4d4' fill-opacity='0.1'%3E%3Cpath d='M30 30c0-6.627-5.373-12-12-12s-12 5.373-12 12 5.373 12 12 12 12-5.373 12-12zm12 0c0-6.627-5.373-12-12-12s-12 5.373-12 12 5.373 12 12 12 12-5.373 12-12z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
                     scrollBehavior: 'smooth'
                   }}
                 >
-                  {/* Modern Background Pattern */}
-                  <div className="absolute inset-0 pointer-events-none opacity-20">
-                    <div className="absolute top-0 left-0 w-full h-full" style={{
-                      backgroundImage: `
-                        radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-                        radial-gradient(circle at 75% 75%, rgba(147, 51, 234, 0.1) 0%, transparent 50%),
-                        radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.05) 0%, transparent 50%)
-                      `
-                    }}></div>
-                  </div>
-                  
-                  {/* Floating Particles */}
-                  <div className="absolute inset-0 pointer-events-none opacity-10">
-                    <div className="absolute top-10 left-10 w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                    <div className="absolute top-20 right-20 w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{animationDelay: '1s'}}></div>
-                    <div className="absolute bottom-20 left-20 w-2.5 h-2.5 bg-pink-400 rounded-full animate-bounce" style={{animationDelay: '2s'}}></div>
-                    <div className="absolute bottom-10 right-10 w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{animationDelay: '3s'}}></div>
-                  </div>
-                  
-                  <div className="relative z-10">
+                  <div className="space-y-3">
                     {chatMessages.slice(-20).map((message, idx) => {
-                      const isCurrentUser = message.user_id === user.id
-                      const displayName = isCurrentUser ? "You" : `User ${message.user_id.slice(-4)}`
+                      const isCurrentUser = user?.id && message.user_id === user.id
+                      // Only show real names, don't fall back to fake names
+                      const displayName = isCurrentUser ? "You" : (message.user_profiles?.full_name || "User")
                       
                       return (
-                        <div key={message.id || idx} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-3 sm:mb-4`}>
-                          <div className={`max-w-xs sm:max-w-sm lg:max-w-xs ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-                            {/* User Info */}
-                            <div className={`flex items-center space-x-1 sm:space-x-2 mb-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                              <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                                isCurrentUser ? 'bg-blue-500' : 'bg-purple-500'
-                              }`}>
-                                {isCurrentUser ? 'Y' : message.user_id.slice(-1).toUpperCase()}
-                              </div>
-                              <span className="text-xs text-gray-500 font-medium">{displayName}</span>
-                              <span className="text-xs text-gray-400">
-                                {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                              </span>
-                            </div>
+                        <div key={message.id || idx} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}>
+                          <div className={`max-w-xs sm:max-w-sm relative ${isCurrentUser ? 'order-2' : 'order-1'}`}>
                             
-                            {/* Message Bubble */}
-                            <div className={`relative px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm ${
+                            {/* WhatsApp-style Message Bubble */}
+                            <div className={`relative px-3 py-2 rounded-lg shadow-sm ${
                               isCurrentUser 
-                                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' 
-                                : 'bg-white border border-gray-200 text-gray-800'
+                                ? 'bg-green-500 text-white rounded-br-sm' 
+                                : 'bg-white text-gray-800 rounded-bl-sm border border-gray-100'
                             } ${message.isTemporary ? 'opacity-70' : ''}`}>
+                              
+                              {/* Message Header (for non-current users) */}
+                              {!isCurrentUser && (
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <div className="w-4 h-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                                    <span className="text-white text-xs font-bold">
+                                      {message.user_id.slice(-1).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs font-medium text-blue-600">{displayName}</span>
+                                </div>
+                              )}
                               
                               {/* Voice Message */}
                               {message.message_type === 'voice' ? (
                                 <div className="space-y-2">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <div className={`p-2 rounded-full ${isCurrentUser ? 'bg-white/20' : 'bg-blue-100'} animate-pulse`}>
-                                      <Volume2 className={`w-4 h-4 ${isCurrentUser ? 'text-white' : 'text-blue-600'}`} />
+                                  <div className="flex items-center space-x-2">
+                                    <div className={`p-2 rounded-full ${isCurrentUser ? 'bg-white/20' : 'bg-green-100'}`}>
+                                      <Volume2 className={`w-4 h-4 ${isCurrentUser ? 'text-white' : 'text-green-600'}`} />
                                     </div>
-                                    <div className={`text-xs font-medium ${isCurrentUser ? 'text-blue-100' : 'text-blue-600'}`}>
-                                      🎤 Voice Message ({message.voice_duration}s)
+                                    <div className="flex-1">
+                                      <div className={`text-xs font-medium ${isCurrentUser ? 'text-green-100' : 'text-green-600'} mb-1`}>
+                                        🎤 Voice Message
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        <div className="flex space-x-1">
+                                          {[...Array(12)].map((_, i) => (
+                                            <div 
+                                              key={i} 
+                                              className={`w-1 rounded-full ${isCurrentUser ? 'bg-white/60' : 'bg-green-300'}`}
+                                              style={{ 
+                                                height: `${Math.random() * 16 + 8}px`,
+                                                animationDelay: `${i * 0.1}s`
+                                              }}
+                                            ></div>
+                                          ))}
+                                        </div>
+                                        <span className={`text-xs ${isCurrentUser ? 'text-green-100' : 'text-gray-500'}`}>
+                                          {message.voice_duration}s
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
-                                  <div className="w-full">
-                                    <audio 
-                                      controls 
-                                      className="w-full"
-                                      style={{
-                                        height: '36px',
-                                        borderRadius: '8px',
-                                        backgroundColor: isCurrentUser ? 'rgba(255,255,255,0.1)' : 'rgba(59,130,246,0.1)'
-                                      }}
-                                      preload="metadata"
-                                    >
-                                      <source src={message.voice_url} type="audio/webm" />
-                                      <source src={message.voice_url} type="audio/wav" />
-                                      <source src={message.voice_url} type="audio/mp3" />
-                                      Your browser does not support audio playback.
-                                    </audio>
-                                  </div>
-                                  <div className={`text-xs ${isCurrentUser ? 'text-blue-100' : 'text-gray-500'} flex items-center space-x-1`}>
-                                    <span>🔊</span>
-                                    <span>Click to play • Practice your listening skills</span>
-                                  </div>
+                                  <audio 
+                                    controls 
+                                    className="w-full h-8 rounded-lg"
+                                    style={{
+                                      backgroundColor: isCurrentUser ? 'rgba(255,255,255,0.1)' : 'rgba(34,197,94,0.1)'
+                                    }}
+                                    preload="metadata"
+                                  >
+                                    <source src={message.voice_url} type="audio/webm" />
+                                    <source src={message.voice_url} type="audio/wav" />
+                                    <source src={message.voice_url} type="audio/mp3" />
+                                  </audio>
                                 </div>
                               ) : (
                                 /* Text Message */
-                                <p className="text-xs sm:text-sm leading-relaxed break-words">
+                                <p className="text-sm leading-relaxed break-words">
                                   {message.message}
                                 </p>
                               )}
                               
-                              {/* Message Tail */}
-                              <div className={`absolute top-2 sm:top-3 w-2 h-2 sm:w-3 sm:h-3 transform rotate-45 ${
-                                isCurrentUser 
-                                  ? 'bg-blue-500 -right-1' 
-                                  : 'bg-white border-l border-b border-gray-200 -left-1'
-                              }`}></div>
+                              {/* WhatsApp-style Message Info */}
+                              <div className={`flex items-center justify-end space-x-1 mt-1 ${
+                                isCurrentUser ? 'text-green-100' : 'text-gray-400'
+                              }`}>
+                                <span className="text-xs">
+                                  {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                                {isCurrentUser && (
+                                  <div className="flex space-x-0.5">
+                                    <div className="w-3 h-3 flex items-center justify-center">
+                                      <svg viewBox="0 0 16 15" className="w-3 h-3 fill-current">
+                                        <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.063-.51zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l3.61 3.463c.143.14.361.125.484-.033L10.91 3.379a.366.366 0 0 0-.063-.51z"/>
+                                      </svg>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                               
                               {message.isTemporary && (
-                                <div className="absolute -bottom-1 right-2 text-xs text-blue-300">
-                                  Sending...
+                                <div className="absolute -bottom-1 right-2 text-xs text-green-300">
+                                  <div className="flex space-x-0.5">
+                                    <div className="w-1 h-1 bg-current rounded-full animate-bounce"></div>
+                                    <div className="w-1 h-1 bg-current rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                    <div className="w-1 h-1 bg-current rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1525,30 +1554,52 @@ const SpeakingLearning = () => {
                     <div ref={chatMessagesEndRef} />
                     
                     {chatMessages.length === 0 && (
-                      <div className="text-center py-8 sm:py-12">
-                        <div className="bg-white/80 rounded-2xl p-4 sm:p-6 mx-2 sm:mx-4">
-                          <MessageCircle className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-3 text-gray-400" />
-                          <h4 className="font-semibold text-gray-600 mb-1 sm:mb-2 text-sm sm:text-base">No messages yet</h4>
-                          <p className="text-xs sm:text-sm text-gray-500">Start the conversation and connect with other learners!</p>
+                      <div className="text-center py-12">
+                        <div className="bg-white/90 rounded-xl p-6 mx-4 shadow-sm">
+                          <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                          <h4 className="font-semibold text-gray-600 mb-2">No messages yet</h4>
+                          <p className="text-sm text-gray-500">Start the conversation and connect with other learners!</p>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
-              
-                {/* Message Input */}
-                <div className="p-3 sm:p-4 bg-gradient-to-r from-white/90 via-blue-50/80 to-purple-50/90 border-t border-white/30 backdrop-blur-xl relative">
-                  {/* Input Area Background Glow */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-400/5 via-purple-400/5 to-pink-400/5 rounded-b-3xl"></div>
-                  <div className="flex space-x-2 sm:space-x-3 mb-3">
+
+                {/* WhatsApp-style Input Area */}
+                <div className="bg-gray-50 p-3 border-t border-gray-100">
+                  <div className="flex items-end space-x-2">
+                    
+                    {/* Voice Message Button */}
+                    <button
+                      onClick={() => {
+                        if (!user?.id) {
+                          if (confirm('Sign up to record voice messages and practice with the community. Would you like to create an account?')) {
+                            navigate('/auth')
+                          }
+                        } else {
+                          setShowVoiceRecorder(true)
+                        }
+                      }}
+                      className="w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-full transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105 relative"
+                      title="🎤 Voice message"
+                    >
+                      <Mic className="w-5 h-5" />
+                      {remainingVoiceMessages > 0 && (
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white text-[10px]">
+                          {remainingVoiceMessages}
+                        </div>
+                      )}
+                    </button>
+                    
+                    {/* Message Input */}
                     <div className="flex-1 relative">
                       <input
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                        placeholder="💬 Type your message..."
-                        className="w-full px-4 sm:px-5 py-3 sm:py-4 bg-white/95 border-2 border-white/50 hover:border-blue-300/60 focus:border-purple-400/60 rounded-2xl focus:ring-2 focus:ring-purple-500/20 text-sm text-gray-700 placeholder-gray-400 shadow-lg backdrop-blur-xl transition-all duration-300 pr-12 hover:shadow-xl focus:shadow-2xl"
+                        placeholder="Type a message..."
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-full focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm text-gray-700 placeholder-gray-400 transition-all duration-200 pr-12"
                       />
                       {newMessage.trim() && (
                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
@@ -1557,60 +1608,32 @@ const SpeakingLearning = () => {
                       )}
                     </div>
                     
-                    {/* Voice Message Button */}
-                    <button
-                      onClick={() => setShowVoiceRecorder(true)}
-                      disabled={remainingVoiceMessages <= 0}
-                      className="group relative w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
-                      title={`🎤 Voice message (${remainingVoiceMessages} left)`}
-                    >
-                      <Mic className="w-5 h-5 sm:w-6 sm:h-6 group-hover:animate-pulse" />
-                      {remainingVoiceMessages > 0 && (
-                        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white shadow-sm animate-pulse">
-                          {remainingVoiceMessages}
-                        </div>
-                      )}
-                      {remainingVoiceMessages <= 0 && (
-                        <div className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                          ✕
-                        </div>
-                      )}
-                    </button>
-                    
+                    {/* Send Button */}
                     <button
                       onClick={sendMessage}
                       disabled={!newMessage.trim()}
-                      className="group w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-2xl transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
+                      className="w-10 h-10 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded-full transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
                       title="Send message"
                     >
-                      <Send className="w-5 h-5 sm:w-6 sm:h-6 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                      <Send className="w-5 h-5" />
                     </button>
                   </div>
                   
                   {/* Status Bar */}
-                  <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center space-x-3 text-gray-600">
-                      <span className="flex items-center space-x-1">
-                        <div className={`w-2 h-2 rounded-full ${
-                          connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
-                          connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}></div>
-                        <span className="font-medium">
-                          {connectionStatus === 'connected' ? 'Connected' : 
-                           connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
-                        </span>
-                      </span>
-                      <span className="text-gray-400">•</span>
-                      <span>Be respectful and helpful 🤝</span>
-                    </div>
+                  <div className="flex justify-between items-center text-xs mt-2 text-gray-500">
                     <div className="flex items-center space-x-2">
-                      {remainingVoiceMessages > 5 ? (
-                        <span className="text-green-600 font-medium">🎤 {remainingVoiceMessages} left</span>
-                      ) : remainingVoiceMessages > 0 ? (
-                        <span className="text-orange-600 font-medium">🎤 {remainingVoiceMessages} left</span>
-                      ) : (
-                        <span className="text-red-600 font-medium">🚫 No voice messages left</span>
-                      )}
+                      <div className={`w-2 h-2 rounded-full ${
+                        connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
+                        connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}></div>
+                      <span>
+                        {connectionStatus === 'connected' ? 'Connected' : 
+                         connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Users className="w-3 h-3" />
+                      <span>{onlineUsers} online</span>
                     </div>
                   </div>
                 </div>
