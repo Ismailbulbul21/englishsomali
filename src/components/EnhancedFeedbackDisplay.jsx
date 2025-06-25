@@ -2,8 +2,7 @@ import React, { useState } from 'react'
 import { 
   CheckCircle, XCircle, AlertCircle, TrendingUp, 
   Brain, Target, BookOpen, Heart, ArrowRight,
-  Lightbulb, Star, MessageCircle, Award, Sparkles,
-  Zap, Bot, Trophy
+  Lightbulb, Star, MessageCircle, Award
 } from 'lucide-react'
 
 const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry }) => {
@@ -39,171 +38,79 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
   const renderOverviewTab = () => (
     <div className="space-y-6">
-      {/* AI Analysis Badge */}
-      <div className="bg-gradient-to-r from-purple-100 to-blue-100 border border-purple-200 rounded-lg p-3">
-        <div className="flex items-center justify-center space-x-2">
-          <Bot className="h-5 w-5 text-purple-600" />
-          <Sparkles className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-semibold text-purple-700">
-            🤖 AI-Powered Intelligent Analysis
-          </span>
-          <Sparkles className="h-4 w-4 text-blue-600" />
-          <Zap className="h-5 w-5 text-yellow-500" />
-        </div>
-        <p className="text-xs text-purple-600 text-center mt-1">
-          Advanced content analysis • Error pattern detection • Personalized coaching
-        </p>
-      </div>
-
       {/* Main Score Display */}
-      <div className="text-center relative">
-        <div className="absolute top-0 right-0">
-          <Trophy className="h-8 w-8 text-yellow-500" />
-        </div>
+      <div className="text-center">
         <div className={`text-6xl font-bold ${getScoreColor(feedback.overallScore)}`}>
           {feedback.overallScore}%
         </div>
         <div className="text-lg text-gray-600 mt-2">
-          {feedback.passed ? '🎉 Excellent Work!' : '💪 Keep Growing!'}
+          {feedback.passed ? '🎉 Passed!' : '💪 Keep Practicing!'}
         </div>
-        {feedback.overallScore >= 90 && (
-          <div className="mt-2">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gradient-to-r from-yellow-100 to-orange-100 text-orange-800">
-              <Star className="h-4 w-4 mr-1" />
-              Outstanding Performance!
-            </span>
-          </div>
-        )}
       </div>
 
-      {/* Enhanced Score Breakdown */}
+      {/* Score Breakdown */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+        <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-blue-700">Content Relevance</span>
+            <span className="text-sm text-gray-600">Relevance</span>
             {getScoreIcon(feedback.relevanceScore)}
           </div>
           <div className={`text-2xl font-bold ${getScoreColor(feedback.relevanceScore)}`}>
             {feedback.relevanceScore}%
           </div>
-          <div className="text-xs text-blue-600 mt-1">
-            AI analyzed: {contentAnalysis.question_elements_covered?.length || 0} key elements covered
-          </div>
         </div>
         
-        <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+        <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-green-700">Grammar Accuracy</span>
+            <span className="text-sm text-gray-600">Grammar</span>
             {getScoreIcon(feedback.grammarScore)}
           </div>
           <div className={`text-2xl font-bold ${getScoreColor(feedback.grammarScore)}`}>
             {feedback.grammarScore}%
           </div>
-          <div className="text-xs text-green-600 mt-1">
-            {(errorPatterns.grammar_errors?.length || 0) + (errorPatterns.article_errors?.length || 0)} errors detected
-          </div>
         </div>
         
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+        <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-purple-700">Speaking Fluency</span>
+            <span className="text-sm text-gray-600">Fluency</span>
             {getScoreIcon(feedback.fluencyScore)}
           </div>
           <div className={`text-2xl font-bold ${getScoreColor(feedback.fluencyScore)}`}>
             {feedback.fluencyScore}%
           </div>
-          <div className="text-xs text-purple-600 mt-1">
-            Confidence: {emotionalState.confidence_level || 'medium'}
-          </div>
         </div>
         
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+        <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-orange-700">Pronunciation</span>
+            <span className="text-sm text-gray-600">Pronunciation</span>
             {getScoreIcon(feedback.pronunciationScore)}
           </div>
           <div className={`text-2xl font-bold ${getScoreColor(feedback.pronunciationScore)}`}>
             {feedback.pronunciationScore}%
           </div>
-          <div className="text-xs text-orange-600 mt-1">
-            {emotionalState.hesitation_markers > 0 ? `${emotionalState.hesitation_markers} hesitations` : 'Clear delivery'}
-          </div>
-        </div>
-      </div>
-
-      {/* AI Insights Section */}
-      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-4">
-        <div className="flex items-start space-x-3">
-          <Brain className="h-6 w-6 text-indigo-600 mt-1" />
-          <div className="flex-1">
-            <h4 className="font-semibold text-indigo-900 flex items-center">
-              AI Content Analysis
-              <Sparkles className="h-4 w-4 ml-2 text-purple-500" />
-            </h4>
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-indigo-700">Question Type:</span>
-                <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-medium">
-                  {contentAnalysis.question_type || 'General'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-indigo-700">Content Richness:</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-16 bg-indigo-200 rounded-full h-2">
-                    <div 
-                      className="bg-indigo-600 h-2 rounded-full" 
-                      style={{ width: `${contentAnalysis.content_richness_score || 0}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-xs font-medium text-indigo-800">
-                    {contentAnalysis.content_richness_score || 0}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
       {/* Personalized Encouragement */}
-      <div className="bg-gradient-to-r from-pink-50 to-red-50 border border-pink-200 rounded-lg p-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <div className="flex items-start space-x-3">
-          <Heart className="h-6 w-6 text-pink-600 mt-1" />
+          <Heart className="h-6 w-6 text-blue-600 mt-1" />
           <div>
-            <h4 className="font-semibold text-pink-900">Personal Encouragement</h4>
-            <p className="text-pink-800 mt-1">{feedback.encouragement_somali}</p>
+            <h4 className="font-semibold text-blue-900">Encouragement</h4>
+            <p className="text-blue-800 mt-1">{feedback.encouragement_somali}</p>
           </div>
         </div>
       </div>
 
       {/* Content Analysis Preview */}
       {contentAnalysis.mentioned_skills?.length > 0 && (
-        <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-start space-x-3">
-            <Star className="h-6 w-6 text-emerald-600 mt-1" />
+            <Star className="h-6 w-6 text-green-600 mt-1" />
             <div>
-              <h4 className="font-semibold text-emerald-900 flex items-center">
-                Detected Skills & Topics
-                <Zap className="h-4 w-4 ml-2 text-yellow-500" />
-              </h4>
-              <p className="text-emerald-800 mt-1">
-                AI identified: {contentAnalysis.mentioned_skills.join(', ')}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Missing Elements Alert */}
-      {contentAnalysis.missing_elements?.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <Lightbulb className="h-6 w-6 text-amber-600 mt-1" />
-            <div>
-              <h4 className="font-semibold text-amber-900">AI Suggestions</h4>
-              <p className="text-amber-800 mt-1">
-                Consider mentioning: {contentAnalysis.missing_elements.join(', ')}
+              <h4 className="font-semibold text-green-900">Great Content!</h4>
+              <p className="text-green-800 mt-1">
+                You mentioned: {contentAnalysis.mentioned_skills.join(', ')}
               </p>
             </div>
           </div>
@@ -214,23 +121,11 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
   const renderAnalysisTab = () => (
     <div className="space-y-6">
-      {/* AI Analysis Header */}
-      <div className="bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 rounded-lg p-3">
-        <div className="flex items-center justify-center space-x-2">
-          <Bot className="h-5 w-5 text-purple-600" />
-          <span className="text-sm font-semibold text-purple-700">
-            🧠 Advanced AI Content Intelligence
-          </span>
-          <Sparkles className="h-4 w-4 text-indigo-600" />
-        </div>
-      </div>
-
       {/* Content Analysis */}
-      <div className="bg-gradient-to-br from-white to-blue-50 border-2 border-blue-200 rounded-lg p-4">
+      <div className="bg-white border rounded-lg p-4">
         <h4 className="font-semibold text-gray-900 flex items-center mb-3">
-          <Brain className="h-5 w-5 mr-2 text-blue-600" />
-          AI Content Analysis
-          <Zap className="h-4 w-4 ml-2 text-yellow-500" />
+          <Brain className="h-5 w-5 mr-2" />
+          Content Analysis
         </h4>
         
         <div className="space-y-3">
@@ -285,11 +180,10 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
       </div>
 
       {/* Emotional State */}
-      <div className="bg-gradient-to-br from-white to-purple-50 border-2 border-purple-200 rounded-lg p-4">
+      <div className="bg-white border rounded-lg p-4">
         <h4 className="font-semibold text-gray-900 flex items-center mb-3">
-          <MessageCircle className="h-5 w-5 mr-2 text-purple-600" />
-          AI Emotional Intelligence Analysis
-          <Heart className="h-4 w-4 ml-2 text-pink-500" />
+          <MessageCircle className="h-5 w-5 mr-2" />
+          Speaking Confidence
         </h4>
         
         <div className="space-y-2">
@@ -316,24 +210,12 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
   const renderCorrectionsTab = () => (
     <div className="space-y-6">
-      {/* AI Corrections Header */}
-      <div className="bg-gradient-to-r from-orange-100 to-red-100 border border-orange-200 rounded-lg p-3">
-        <div className="flex items-center justify-center space-x-2">
-          <Lightbulb className="h-5 w-5 text-orange-600" />
-          <span className="text-sm font-semibold text-orange-700">
-            🔍 AI-Powered Error Detection & Corrections
-          </span>
-          <Sparkles className="h-4 w-4 text-red-600" />
-        </div>
-      </div>
-
       {/* Somali Interference Errors */}
       {errorPatterns.somali_interference?.length > 0 && (
-        <div className="bg-gradient-to-br from-white to-orange-50 border-2 border-orange-200 rounded-lg p-4">
+        <div className="bg-white border rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 flex items-center mb-3">
             <AlertCircle className="h-5 w-5 mr-2 text-orange-600" />
-            AI-Detected Language Transfer Issues
-            <Bot className="h-4 w-4 ml-2 text-blue-600" />
+            Language Transfer Issues
           </h4>
           
           {errorPatterns.somali_interference.map((error, index) => (
@@ -355,11 +237,10 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
       {/* Article Errors */}
       {errorPatterns.article_errors?.length > 0 && (
-        <div className="bg-gradient-to-br from-white to-blue-50 border-2 border-blue-200 rounded-lg p-4">
+        <div className="bg-white border rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 flex items-center mb-3">
             <BookOpen className="h-5 w-5 mr-2 text-blue-600" />
-            AI-Detected Article Usage Issues
-            <Zap className="h-4 w-4 ml-2 text-yellow-500" />
+            Article Usage
           </h4>
           
           {errorPatterns.article_errors.map((error, index) => (
@@ -391,24 +272,12 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
   const renderImprovementTab = () => (
     <div className="space-y-6">
-      {/* AI Improvement Header */}
-      <div className="bg-gradient-to-r from-green-100 to-teal-100 border border-green-200 rounded-lg p-3">
-        <div className="flex items-center justify-center space-x-2">
-          <Target className="h-5 w-5 text-green-600" />
-          <span className="text-sm font-semibold text-green-700">
-            🎯 AI-Personalized Learning Roadmap
-          </span>
-          <TrendingUp className="h-4 w-4 text-teal-600" />
-        </div>
-      </div>
-
       {/* Immediate Focus */}
       {improvementPlan.immediate_focus?.length > 0 && (
-        <div className="bg-gradient-to-br from-white to-red-50 border-2 border-red-200 rounded-lg p-4">
+        <div className="bg-white border rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 flex items-center mb-3">
             <Target className="h-5 w-5 mr-2 text-red-600" />
-            AI-Recommended Focus Areas (This Session)
-            <Sparkles className="h-4 w-4 ml-2 text-purple-500" />
+            Focus Areas (This Session)
           </h4>
           
           {improvementPlan.immediate_focus.map((focus, index) => (
@@ -433,11 +302,10 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
 
       {/* Weekly Goals */}
       {improvementPlan.this_week?.length > 0 && (
-        <div className="bg-gradient-to-br from-white to-blue-50 border-2 border-blue-200 rounded-lg p-4">
+        <div className="bg-white border rounded-lg p-4">
           <h4 className="font-semibold text-gray-900 flex items-center mb-3">
             <TrendingUp className="h-5 w-5 mr-2 text-blue-600" />
-            AI-Generated Weekly Goals
-            <Bot className="h-4 w-4 ml-2 text-purple-600" />
+            This Week's Goals
           </h4>
           
           {improvementPlan.this_week.map((goal, index) => (
@@ -470,35 +338,9 @@ const EnhancedFeedbackDisplay = ({ feedback, onClose, onNextQuestion, onRetry })
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 opacity-20">
-            <Bot className="h-16 w-16" />
-          </div>
-          <div className="relative">
-            <div className="flex items-center space-x-2">
-              <Brain className="h-6 w-6" />
-              <h3 className="text-xl font-bold">AI-Powered Learning Analysis</h3>
-              <Sparkles className="h-5 w-5 text-yellow-300" />
-            </div>
-            <p className="text-blue-100 mt-1 flex items-center space-x-1">
-              <Zap className="h-4 w-4 text-yellow-300" />
-              <span>Advanced AI content analysis • Smart error detection • Personalized coaching</span>
-            </p>
-            <div className="mt-2 flex items-center space-x-4 text-sm text-blue-200">
-              <span className="flex items-center space-x-1">
-                <CheckCircle className="h-4 w-4" />
-                <span>Content Intelligence</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <Target className="h-4 w-4" />
-                <span>Error Patterns</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <Heart className="h-4 w-4" />
-                <span>Cultural Coaching</span>
-              </span>
-            </div>
-          </div>
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
+          <h3 className="text-xl font-bold">Your Learning Analysis</h3>
+          <p className="text-blue-100 mt-1">Personalized feedback to help you improve</p>
         </div>
 
         {/* Tabs */}
