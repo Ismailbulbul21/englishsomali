@@ -13,7 +13,7 @@ import {
   getFailedAttempts, getExampleAnswer, canUserProceed, getUserLevelProgress,
   getGroupRooms, getChatMessages, sendChatMessage, subscribeToChatMessages,
   getUserProgress, updateUserProgress, getRemainingVoiceMessages, 
-  uploadVoiceMessage, sendVoiceMessage
+  uploadVoiceMessage, sendVoiceMessage, filterRecentMessages, cleanupChatCache
 } from '../lib/supabase'
 
 const SpeakingLearning = () => {
@@ -153,6 +153,26 @@ const SpeakingLearning = () => {
     }
   }, [chatMessages])
 
+  // Periodic cleanup of old messages every 5 minutes
+  useEffect(() => {
+    if (!groupRoom) return
+
+    const cleanupInterval = setInterval(() => {
+      setChatMessages(prevMessages => {
+        const filteredMessages = filterRecentMessages(prevMessages)
+        
+        // Update cache silently if messages were filtered
+        if (filteredMessages.length !== prevMessages.length) {
+          localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(filteredMessages))
+        }
+        
+        return filteredMessages
+      })
+    }, 5 * 60 * 1000) // Every 5 minutes
+
+    return () => clearInterval(cleanupInterval)
+  }, [groupRoom])
+
   const loadCategoryAndLevels = async () => {
     try {
       const { data: categories, error: categoriesError } = await getCategories()
@@ -226,24 +246,18 @@ const SpeakingLearning = () => {
   const loadChatMessages = async () => {
     if (!groupRoom) return
     try {
-      // Load from localStorage first for instant display
-      const cachedMessages = localStorage.getItem(`chat_${groupRoom.id}`)
-      if (cachedMessages) {
-        try {
-          const parsed = JSON.parse(cachedMessages)
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setChatMessages(parsed)
+      // First clean up localStorage cache for this room
+      const cachedFilteredMessages = cleanupChatCache(groupRoom.id)
+      
+      // Load from cleaned localStorage first for instant display
+      if (cachedFilteredMessages.length > 0) {
+        setChatMessages(cachedFilteredMessages)
             // Update online count from cached messages
-            const activeCount = getActiveUsersCount(parsed)
+        const activeCount = getActiveUsersCount(cachedFilteredMessages)
             setOnlineUsers(activeCount)
-          }
-        } catch (e) {
-          console.warn('Failed to parse cached messages:', e)
-          localStorage.removeItem(`chat_${groupRoom.id}`)
-        }
       }
 
-      // Then load fresh data from server
+      // Then load fresh data from server (this now includes automatic cleanup)
       const { data: messages, error } = await getChatMessages(groupRoom.id)
       if (error) {
         console.error('Error loading chat messages from server:', error)
@@ -253,14 +267,17 @@ const SpeakingLearning = () => {
       if (messages && messages.length > 0) {
         // Messages come in descending order (newest first), reverse to get chronological order (oldest first)
         const chronologicalMessages = [...messages].reverse()
-        setChatMessages(chronologicalMessages)
         
-        // Cache messages for persistence
-        localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(chronologicalMessages))
+        // Additional client-side filtering as safety measure
+        const filteredMessages = filterRecentMessages(chronologicalMessages)
+        
+        setChatMessages(filteredMessages)
+        
+        // Cache filtered messages for persistence
+        localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(filteredMessages))
         
         // Update online users count based on recent activity
-        const activeCount = getActiveUsersCount(chronologicalMessages)
-        setOnlineUsers(activeCount)
+        setOnlineUsers(getActiveUsersCount(filteredMessages))
       } else {
         // No messages, reset to just current user
         setChatMessages([])
@@ -279,32 +296,42 @@ const SpeakingLearning = () => {
     setConnectionStatus('connecting')
     
     chatSubscriptionRef.current = subscribeToChatMessages(groupRoom.id, (payload) => {
-      console.log('Received real-time message:', payload.new)
       setConnectionStatus('connected')
+      
+      // Check if the new message is within age limits (24 hours for both text and voice)
+      const messageAge = new Date(payload.new.created_at)
+      const now = new Date()
+      const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
+      
+      // Skip old messages (both text and voice after 24 hours)
+      if (hoursDiff >= 24) {
+        return
+      }
       
       setChatMessages(prev => {
         // Check if message already exists to prevent duplicates
         const messageExists = prev.some(msg => msg.id === payload.new.id)
         if (messageExists) {
-          console.log('Message already exists, skipping duplicate')
           return prev
         }
         
         // Add new message to the end (chronological order)
         const newMessages = [...prev, payload.new]
         
-        // Cache updated messages
+        // Filter all messages to ensure no old ones remain
+        const filteredMessages = filterRecentMessages(newMessages)
+        
+        // Cache updated filtered messages
         try {
-          localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(newMessages))
+          localStorage.setItem(`chat_${groupRoom.id}`, JSON.stringify(filteredMessages))
         } catch (e) {
-          console.warn('Failed to cache messages:', e)
+          // Silent error handling
         }
         
         // Update online count when new messages arrive
-        const activeCount = getActiveUsersCount(newMessages)
-        setOnlineUsers(activeCount)
+        setOnlineUsers(getActiveUsersCount(filteredMessages))
         
-        return newMessages
+        return filteredMessages
       })
     })
     

@@ -414,12 +414,22 @@ export const getGroupRooms = async () => {
 }
 
 export const getChatMessages = async (roomId, limit = 20) => {
+  try {
+    // First, run cleanup to remove old messages from database
+    await cleanupOldMessages()
+    
+    // Use the new function that only returns recent messages
   const { data, error } = await supabase
-    .from('chat_messages')
-    .select('*')
-    .eq('room_id', roomId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
+      .rpc('get_recent_chat_messages', { 
+        room_uuid: roomId, 
+        message_limit: limit 
+      })
+    
+    if (error) {
+      console.error('Error fetching recent messages:', error)
+      // Fallback to old method with client-side filtering
+      return getChatMessagesFallback(roomId, limit)
+    }
   
   // If we have messages, add user info
   if (data && data.length > 0) {
@@ -435,10 +445,54 @@ export const getChatMessages = async (roomId, limit = 20) => {
         }
       }
     })
-    return { data: messagesWithUserInfo, error }
+      return { data: messagesWithUserInfo, error: null }
   }
   
-  return { data, error }
+    return { data: [], error: null }
+  } catch (error) {
+    console.error('Error in getChatMessages:', error)
+    // Fallback to old method with client-side filtering
+    return getChatMessagesFallback(roomId, limit)
+  }
+}
+
+// Fallback method with client-side filtering
+const getChatMessagesFallback = async (roomId, limit = 20) => {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+    .limit(limit * 2) // Get more to account for filtering
+  
+  if (error) {
+    return { data: [], error }
+  }
+  
+  // Filter messages by age on client side
+  const now = new Date()
+  const filteredMessages = data?.filter(message => {
+    const messageAge = new Date(message.created_at)
+    const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
+    
+    // Both text and voice messages: only show if less than 24 hours old
+    return hoursDiff < 24
+  }).slice(0, limit) || []
+  
+  // Add user info
+  const messagesWithUserInfo = filteredMessages.map(message => {
+    const userIdHash = message.user_id.slice(-4)
+    const userName = `User ${userIdHash}`
+    
+    return {
+      ...message,
+      user_profiles: {
+        full_name: userName
+      }
+    }
+  })
+  
+  return { data: messagesWithUserInfo, error: null }
 }
 
 export const sendChatMessage = async (roomId, userId, message, messageType = 'text', metadata = {}) => {
@@ -572,9 +626,49 @@ export const sendVoiceMessage = async (roomId, userId, voiceUrl, duration) => {
   }
 }
 
+// Utility function to filter old messages from cache or any message array
+export const filterRecentMessages = (messages) => {
+  if (!messages || !Array.isArray(messages)) return []
+  
+  const now = new Date()
+  return messages.filter(message => {
+    const messageAge = new Date(message.created_at)
+    const hoursDiff = (now - messageAge) / (1000 * 60 * 60)
+    
+    // Both voice and text messages: only show if less than 24 hours old
+    return hoursDiff < 24
+  })
+}
+
+// Clean up localStorage chat cache for a specific room
+export const cleanupChatCache = (roomId) => {
+  try {
+    const cacheKey = `chat_${roomId}`
+    const cachedMessages = localStorage.getItem(cacheKey)
+    
+    if (cachedMessages) {
+      const parsed = JSON.parse(cachedMessages)
+      const filteredMessages = filterRecentMessages(parsed)
+      
+      if (filteredMessages.length !== parsed.length) {
+        // Update cache with filtered messages silently
+        localStorage.setItem(cacheKey, JSON.stringify(filteredMessages))
+      }
+      
+      return filteredMessages
+    }
+  } catch (error) {
+    localStorage.removeItem(`chat_${roomId}`)
+  }
+  
+  return []
+}
+
 export const cleanupOldMessages = async () => {
   const { data, error } = await supabase
     .rpc('cleanup_old_messages')
+  
+  // Silent cleanup - no logging
   return { data, error }
 }
 
